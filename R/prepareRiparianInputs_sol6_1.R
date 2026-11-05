@@ -67,6 +67,20 @@ validateShapefile_sol6_1 <- function(path, source) {
   invisible(TRUE)
 }
 
+zipShapefileProblem_sol6_1 <- function(contents, source, archive) {
+  # Return a diagnostic so reuse can skip bad archives while new downloads fail clearly.
+  main <- contents$Name[basename(contents$Name) == source$shape]
+  if (length(main) != 1L) {
+    return(paste("Downloaded ZIP lacks expected shapefile", source$shape))
+  }
+  required <- paste0(sub("\\.shp$", "", main), c(".shp", ".shx", ".dbf", ".prj"))
+  if (!all(required %in% contents$Name) ||
+      any(contents$Length[match(required, contents$Name)] <= 0)) {
+    return(paste("Downloaded ZIP has missing or empty shapefile components:", archive))
+  }
+  NULL
+}
+
 obtainRiparianSource_sol6_1 <- function(
   dataset,
   cacheDir,
@@ -123,25 +137,10 @@ obtainRiparianSource_sol6_1 <- function(
           utils::unzip(candidate, list = TRUE),
           error = function(e) NULL
         )
-        if (!is.null(listing)) {
-          # Locate the expected shapefile regardless of its archive subfolder.
-          main <- listing$Name[basename(listing$Name) == source$shape]
-          if (length(main) == 1L) {
-            # A usable shapefile must include nonempty geometry, index,
-            # attribute-table, and projection components.
-            required <- paste0(
-              sub("\\.shp$", "", main),
-              c(".shp", ".shx", ".dbf", ".prj")
-            )
-            if (
-              all(required %in% listing$Name) &&
-                all(listing$Length[match(required, listing$Name)] > 0)
-            ) {
-              archiveToUse <- candidate
-              contents <- listing
-              break
-            }
-          }
+        if (!is.null(listing) && is.null(zipShapefileProblem_sol6_1(listing, source, candidate))) {
+          archiveToUse <- candidate
+          contents <- listing
+          break
         }
       }
       # Track whether the raw archive was found locally versus downloaded now.
@@ -174,23 +173,8 @@ obtainRiparianSource_sol6_1 <- function(
         }
         # Verify ZIP contents before atomically publishing the completed file.
         contents <- utils::unzip(partial, list = TRUE)
-        main <- contents$Name[basename(contents$Name) == source$shape]
-        if (length(main) != 1L) {
-          stop("Downloaded ZIP lacks expected shapefile ", source$shape)
-        }
-        required <- paste0(
-          sub("\\.shp$", "", main),
-          c(".shp", ".shx", ".dbf", ".prj")
-        )
-        if (
-          !all(required %in% contents$Name) ||
-            any(contents$Length[match(required, contents$Name)] <= 0)
-        ) {
-          stop(
-            "Downloaded ZIP has missing or empty shapefile components: ",
-            partial
-          )
-        }
+        problem <- zipShapefileProblem_sol6_1(contents, source, partial)
+        if (!is.null(problem)) stop(problem)
         if (!file.rename(partial, archive)) {
           stop("Cannot publish completed archive: ", archive)
         }

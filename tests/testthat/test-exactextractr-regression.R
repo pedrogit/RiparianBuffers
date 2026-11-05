@@ -48,3 +48,26 @@ testthat::test_that("disjoint features in one cell are summed, overlap is not co
   testthat::expect_lte(abs(exactTileFractions_sol6_1(grid, pieces) - 0.4), 1e-6)
   testthat::expect_error(exactTileFractions_sol6_1(grid, rbind(sol_rect(), sol_rect())), "outside")
 })
+
+testthat::test_that("precomputed tile geometry preserves footprint and empty behavior", {
+  f <- sol_prepared(sol_fixture(20, lake = TRUE))
+  tile <- terra::as.polygons(terra::ext(f$PlanningGrid), crs = terra::crs(f$PlanningGrid))
+  args <- list(tileCore = tile, studyArea = f$studyArea, Jurisdiction = f$Jurisdiction,
+               policy = f$policy, streams = f$streams, lakes = f$lakes)
+  baseline <- do.call(buildPolicyFootprints_sol6_1, args)
+  reused <- do.call(buildPolicyFootprints_sol6_1, c(args, list(
+    core = intersectPolygons_sol6_1(tile, f$studyArea), maxWidth = f$haloWidth_m)))
+  testthat::expect_identical(terra::geom(reused), terra::geom(baseline))
+  testthat::expect_null(do.call(buildPolicyFootprints_sol6_1, c(args, list(core = NULL))))
+})
+
+testthat::test_that("shared archive validation recognizes complete and incomplete sources", {
+  source <- riparianSource_sol6_1("streams")
+  members <- paste0("nested/HydroRIVERS_v10_na", c(".shp", ".shx", ".dbf", ".prj"))
+  listing <- data.frame(Name = members, Length = 100)
+  testthat::expect_null(zipShapefileProblem_sol6_1(listing, source, "test.zip"))
+  testthat::expect_match(zipShapefileProblem_sol6_1(listing[-1, ], source, "test.zip"), "lacks expected")
+  testthat::expect_match(zipShapefileProblem_sol6_1(listing[-4, ], source, "test.zip"), "missing or empty")
+  listing$Length[2] <- 0
+  testthat::expect_match(zipShapefileProblem_sol6_1(listing, source, "test.zip"), "missing or empty")
+})

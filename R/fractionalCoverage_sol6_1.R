@@ -135,6 +135,8 @@ fractionalCoverage_sol6_1 <- function(
   if (any(!is.finite(w)) || any(w < 0)) {
     stop("Policy widths must be finite and nonnegative.")
   }
+  # Every tile uses the same validated maximum width for whole-feature selection.
+  maxWidth <- max(w)
   for (path in c(outputDir, scratchDir)) {
     # Ensure output and staging locations are usable before any processing begins.
     if (length(path) != 1L || is.na(path) || !nzchar(path)) {
@@ -236,7 +238,6 @@ fractionalCoverage_sol6_1 <- function(
         extent = ex,
         crs = terra::crs(PlanningGrid)
       )
-      terra::values(template) <- 1
       # Convert the tile rectangle to a polygon for destination and footprint clipping.
       core <- terra::as.polygons(ex, crs = terra::crs(template))
       studyCore <- intersectPolygons_sol6_1(core, studyArea)
@@ -248,7 +249,9 @@ fractionalCoverage_sol6_1 <- function(
           Jurisdiction,
           policy,
           streams,
-          lakes
+          lakes,
+          core = studyCore,
+          maxWidth = maxWidth
         )
         fractions <- exactTileFractions_sol6_1(template, footprint)
         # Mark cells outside the study area as NoData, even if a buffer reaches them.

@@ -58,17 +58,17 @@ buildPolicyFootprints_sol6_1 <- function(
   Jurisdiction,
   policy,
   streams,
-  lakes
+  lakes,
+  core = intersectPolygons_sol6_1(tileCore, studyArea),
+  maxWidth = max(as.matrix(policy[, c("small_stream", "large_stream", "small_lake", "large_lake")]))
 ) {
-  # Clip the tile to the study area; tiles outside it contribute no output geometry.
-  core <- intersectPolygons_sol6_1(tileCore, studyArea)
+  # Direct callers get the same defaults; tiled callers reuse their prepared core and width.
   if (is.null(core)) {
     return(NULL)
   }
   receiving <- selectIntersecting_sol6_1(Jurisdiction, core)
   # These names pair policy columns with the corresponding hydrology classes.
   widths <- c("small_stream", "large_stream", "small_lake", "large_lake")
-  maxWidth <- max(as.matrix(policy[, widths, drop = FALSE]))
   # A bounding-box halo only selects whole features: it does not manufacture
   # line endpoints or lake shorelines by clipping the source geometries.
   e <- as.vector(terra::ext(tileCore)) +

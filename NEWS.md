@@ -2,6 +2,8 @@
 
 ## 0.1.1
 
+- Reuse tile-study intersections and the validated maximum policy width, remove
+  redundant raster initialization, and share cached/downloaded ZIP validation.
 - Replace explicit sf/GEOS polygon-cell intersections with `exactextractr`
   coverage fractions, preserving full-cell denominators and outside-study NA.
 - Add `exactextractr` as a runtime dependency and record the agreed absolute
