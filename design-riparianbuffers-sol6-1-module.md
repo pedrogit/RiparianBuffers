@@ -1,0 +1,144 @@
+# Plan: riparianBuffers_Sol6_1
+
+## Goal and approved scientific rules
+
+Create `modules/riparianBuffers_Sol6_1/` alongside the existing module, without changing `modules/RiparianBuffers/` or replacing existing runs/results.
+
+User-selected design:
+- Construct vector footprints using the actual policy widths; calculate exact polygon–cell area fractions rather than averaging a fine binary raster.
+- Use **destination-jurisdiction policy**: each jurisdiction applies its widths to nearby hydrology, including features across its boundary; clip the resulting footprint to the receiving jurisdiction.
+- **Include mapped lake interiors**: union lake water surfaces with the policy-width buffer footprints. A cell wholly inside a mapped lake and study area has fraction 1, consistent with the original module's normal lake-interior behavior. This supersedes the earlier land-only choice.
+
+The fraction denominator remains the **full planning-cell area**, preserving the fractional-coverage interpretation while exposing the new result separately as `Riparian_sol6_1$riparianFraction`. It is not the fraction of remaining dry land. Clip the numerator to study-area polygons; cells outside the study area are NA, and partially intersecting cells retain the full-cell denominator. Record this definition in output metadata and documentation.
+
+### Required documentation: lake inclusion
+
+State prominently in the README overview, module metadata/output descriptions, and module manual:
+
+> The output measures combined lake-and-riparian-buffer coverage, not riparian land alone. Mapped lake water surfaces are included along with policy-width buffers on surrounding land. A planning cell entirely inside a mapped lake and the study area has riparianFraction = 1. Lake water overlapped by stream or lake buffers is counted once, not added repeatedly. The denominator is the full planning-cell area, including water. Cells entirely outside the study area are NA. These values are a hydrological influence/coverage signal, not a classification of harvestable land.
+
+Explain that stream centreline data do not define explicit river water-surface polygons; only mapped lake polygons and constructed buffer footprints contribute. Include a shoreline/stream-over-lake illustration and a worked example: 10 ha buffered land plus 5 ha mapped lake water in a 100 ha cell gives 0.15, with overlapping areas counted once. Explicitly document lake inclusion, which was implicit in the original implementation but not clearly specified in its manuals. Record `lakeInteriorsExcluded = FALSE` in output metadata. Remove superseded land-only wording from all new documentation and examples.
+
+## 1. Scaffold and preserve the interface
+
+Use the exact module name `riparianBuffers_Sol6_1` consistently in directory, main filename, metadata, event handler, and parameter namespace. Provide one `init` event, with no recurring events or debugger calls.
+
+Expose `sim$Riparian_sol6_1$riparianFraction` as a single-layer `SpatRaster` aligned exactly to the selected planning grid. The original module continues writing `sim$Riparian`; the new module must never overwrite or alias that object. Preserve the list's `policy` element; add method, coverage convention, source CRS, policy-fallback diagnostics, and lake/border-rule metadata. Do not retain a misleading `raster_m` field: the exact engine has no fine-raster resolution. Document the object-name and metadata compatibility differences.
+
+Use the common shared object name `PlanningGrid` (not `PlanningGrid_sol6_1`). Accept a supplied planning grid; otherwise build a documented 240 m default during standalone input preparation. A supplied grid overrides this fallback, including the 1000 m grid used in the Angela example. Never replace or modify an existing or upstream-promised grid. In joint runs, explicitly supply one common `PlanningGrid` or designate a single upstream grid provider; do not let both modules independently construct competing defaults. Output resolution is independent of geometry processing. Use destination jurisdiction polygons, not a resampled coarse jurisdiction raster. Existing jurisdiction raster/lookup products alone are insufficient to recover precise boundaries; obtain polygons when missing.
+
+### Coexistence and naming requirements
+
+Both modules must be loadable and runnable in the **same `simList`**, not merely separate R sessions. Keep the requested module identity `riparianBuffers_Sol6_1`; use the exact lowercase suffix `_sol6_1` for potentially conflicting shared object, helper, file, and diagnostic names.
+
+- All external input names are unsuffixed: `studyArea`, `PlanningGrid`, `Jurisdiction`, `riparianBufferPolicy`, `Hydrology_streams`, and `Hydrology_lakes`. Sharing read-only inputs is intentional and is not an output-name conflict. Do not offer parallel suffixed input aliases. The new algorithm does not require `jurisdictionMap` or `jurisdictionLookup`.
+- Reuse suitable explicitly supplied/upstream inputs; prepare missing data locally. Never overwrite, repair, project, classify, or extend a common input in place. Keep modified/fallback geometries and policy tables module-local, or expose them only as suffixed prepared outputs (`Jurisdiction_sol6_1`, `riparianBufferPolicy_sol6_1`, `Hydrology_streams_sol6_1`, `Hydrology_lakes_sol6_1`) when needed for provenance/reuse. These are outputs, not additional input aliases. `PlanningGrid` remains the deliberate common-input/standalone-fallback exception described above.
+- Do not publish independently downloaded fallback hydrology under the common input names: the original module already declares `Hydrology_streams` and `Hydrology_lakes` as outputs. Do not assume its cropped hydrology supplies the new halo. Joint runs should explicitly supply validated common inputs or designate one upstream provider; independently prepared new-module fallback data remain isolated.
+- Declare actual suffixed outputs and common input sources correctly in SpaDES metadata so both providers do not claim the same output. Avoid mutual dependencies or reliance on the original module's defaults. Verify actual initialization behavior for common-input reuse and test explicit provider/load ordering. If shared-input dependency resolution is ambiguous, resolve it through the runner's supplied objects/provider configuration rather than renaming inputs or modifying the original module.
+- Suffix potentially conflicting helpers (for example `buildPolicyFootprints_sol6_1`) even though normal SpaDES module functions are module-scoped. Keep working variables module-local. Do not leak intermediate objects into shared `sim` or `.GlobalEnv`.
+- Isolate writable cache entries, prepared input files, temporary files, GeoTIFFs, policy exports, and logs with `_sol6_1` names or dedicated new-module directories. Raw source archives may be reused read-only after validation. Do not alter global options or paths in the module in ways that affect the old module.
+- Default downstream Landbase continues consuming `Riparian`. Consumers wanting the new result must explicitly select `Riparian_sol6_1`; do not automatically copy it into `Riparian` during a joint run. Preserve the same nested fraction structure to allow a later explicit integration adapter.
+
+## 2. Prepare and validate inputs
+
+Keep standalone operation: require `studyArea`; accept upstream/supplied grid, jurisdiction polygons, policy and hydrology; prepare only missing objects. Reuse existing source URLs, caches and available `terra`/`reproducible` functionality, without hard-coded user-specific scratch paths.
+
+### Automatic water-data downloads
+
+Independently check the two unsuffixed optional inputs. If `Hydrology_streams` is missing and not promised by a configured upstream provider, automatically obtain North American HydroRIVERS from `https://data.hydrosheds.org/file/HydroRIVERS/HydroRIVERS_v10_na_shp.zip`. If `Hydrology_lakes` is missing and not promised upstream, automatically obtain global HydroLAKES from `https://data.hydrosheds.org/file/hydrolakes/HydroLAKES_polys_v10_shp.zip`. When both are missing, obtain both; when only one is missing, obtain only that dataset. No external data-preparation module is required.
+
+Reuse a validated complete local archive/extraction before downloading, validate required shapefile components and classification attributes, and prepare halo-aware module-local/suffixed working copies as specified below. Supplied invalid inputs produce a clear validation error, not silent replacement. Download/extraction failures must stop with the dataset, URL and local path identified; do not silently substitute empty hydrology or a zero raster. Missing inputs must be distinguished from supplied valid empty datasets, which should not trigger downloads. Document internet access, download/storage costs and geographic coverage.
+
+Test the four supplied/missing combinations with mocked download/preparation functions, verifying the correct sources, cache reuse, no unexpected downloads, and no writes to the original module's shared hydrology outputs. Test failures and valid empty supplied inputs separately.
+
+Validate projected metre-based CRS, grid geometry, finite nonnegative policy widths, unique jurisdiction keys, default-policy availability, required jurisdiction/classification fields, and valid geometries. Normalize supplied lookup tables if used. Make geometry repair explicit and report it; never alter original input files.
+
+Retain source classifications: `ORD_STRA >= 4` for large streams; `Lake_area >= 1 km²` for large lakes. Validate missing/NA class attributes instead of silently assigning them. Retain the bundled simplified policy values, clearly labelled as analytical assumptions, not legal US/Canadian policy. Preserve the existing six-province mappings and default fallback for other names, with an explicit diagnostic identifying defaulted jurisdictions.
+
+Prepare hydrology using a study-area envelope expanded by the largest applicable width. Preserve original feature attributes and geometries needed for buffering and lake-interior inclusion. Select lake polygons intersecting the processing area even when their shorelines are outside it, so cells deep inside large lakes are included. Do not crop to the unbuffered study-area boundary before buffering. If supplied hydrology coverage is unknown, document that complete halo coverage cannot be guaranteed from feature extents alone.
+
+Check that jurisdiction polygons cover the study-area land where policy widths must be evaluated. Include mapped lake interiors independently of policy assignment, so offshore jurisdiction gaps do not turn wholly lake-covered cells into zero. Gaps on non-lake land remain validation errors. Handle overlapping jurisdiction polygons explicitly rather than allowing arbitrary overwrite.
+
+Retain the base-R ZIP extraction workaround if required, and validate extracted files. Reuse existing complete raw downloads where feasible, but do not assume old cropped caches contain the halo. Check cached geometries/coverage/provenance before reuse; use separate new-module cache keys.
+
+## 3. Implement policy footprints
+
+For each planning-grid-aligned tile:
+1. Select relevant receiving jurisdictions intersecting its core.
+2. Select nearby streams/lakes from a halo at least as wide as the maximum policy width; avoid artificial endpoints or shorelines introduced by clipping before buffering.
+3. For each feature class and applicable policy width, buffer original geometries by that width. Reuse matching class/width results locally where possible.
+4. Clip footprints to receiving-jurisdiction polygons and the tile core/study area.
+5. Union overlapping footprints so area is counted once.
+6. Union the footprint with **all mapped lake interiors** intersecting the tile core/study area, including lakes with zero buffer widths or no assigned water-surface jurisdiction. Count water/stream/lake-buffer overlaps once. Lake interiors are not subtracted.
+
+Zero widths contribute no surrounding land, but mapped lake interiors still contribute their full area. Empty feature classes are valid and yield no footprint of that class. No fixed 100 m pre-buffer, global distance raster, coarse jurisdiction resampling, or class-order overwrite remains.
+
+Buffering and area calculations use the chosen projected CRS. “Exact” means exact geometric polygon–cell intersection within numerical tolerance, not geodesically exact ground area or proof that source hydrology/policy are complete. Document projection distortion and the study-area CRS limitation; do not silently reproject the user's output grid.
+
+## 4. Exact coverage and scalable execution
+
+First verify the installed `terra` exact polygon–cell coverage API on analytical fixtures, including fraction semantics, cell IDs, empty intersections, and datatype precision. Prefer existing dependencies; consider another exact-coverage dependency only if required and obtain approval before adding it. Do not substitute `rasterize(cover=TRUE)` and call it exact.
+
+Compute coverage from locally dissolved non-overlapping geometry. Ensure each output cell is processed once, only tile cores are written, and fraction values are finite and within [0,1] up to a stated floating-point tolerance. Do not conceal substantial errors by unconditional clamping.
+
+Use one output-grid-aligned tiling parameter expressed in cells. Avoid a continental union or fine-resolution raster. Use disk-backed output and configured scratch paths; process sequentially initially. Validate the installed incremental raster-write API before implementing it. Tiled and untiled results must agree within numerical tolerance. Record tile progress and useful errors without storing a full simulation checkpoint per tile.
+
+### Raster and optional Shapefile export
+
+Add module parameter `exportVectorBuffer_sol6_1` of class logical, default **TRUE**, validated as one non-missing boolean. In the same module run that writes the fraction GeoTIFF, export `riparian_buffers_sol6_1.shp` when this parameter is TRUE. FALSE skips vector export only: the raster and its values must be identical. Use the configured output path and isolated `_sol6_1` filenames; never overwrite existing results silently.
+
+Export the **final footprint used for the raster numerator**: unioned destination-policy buffer footprints plus mapped lake interiors, clipped to the study area. Apply receiving-jurisdiction clipping to policy buffers, not to the independently included lake interiors. Do not export raw hydrology, uncorrected buffer polygons, or a polygonization of raster cells. Use the same projected CRS as the output raster. Document that this layer represents combined lake-and-buffer coverage, not land-only riparian habitat or an actual ecological-boundary survey.
+
+Support tiled processing without a global dissolve: append non-overlapping tile-core polygon pieces to the vector layer, using stable short field names such as `tile_id`. Adjacent polygons may share tile seams; document that these are processing boundaries, not ecological boundaries, and do not duplicate area. Validate the installed vector append API. Create all required Shapefile sidecars (`.shp`, `.shx`, `.dbf`, `.prj`); report the main path and store it as `Riparian_sol6_1$vectorBufferFile` (NULL when export is disabled). Also record the raster filename in the output metadata.
+
+Document Shapefile field-name and file-size limitations. Check output-size constraints during export, stop with an actionable diagnostic if limits are reached, and do not silently truncate geometry or substitute a different format. Stage files in module-specific scratch space and publish completed outputs together; identify incomplete exports clearly on failure. For empty footprints, validate that a correctly projected empty polygon Shapefile can be written and read back; do not invent non-empty placeholder geometry.
+
+Explain the boolean parameter, default TRUE, output location, required sidecars, lake inclusion, tile seams, and FALSE behavior in README/manual and examples.
+
+## 5. Proposed files
+
+Within `modules/riparianBuffers_Sol6_1/`:
+- `riparianBuffers_Sol6_1.R`: metadata, standalone input preparation, event dispatcher.
+- `R/riparianBuffersInit_sol6_1.R`: orchestration and output contract.
+- `R/validateRiparianInputs_sol6_1.R`: validation and normalization.
+- `R/resolveRiparianPolicy_sol6_1.R`: jurisdiction names, policy matching and diagnostics.
+- `R/buildPolicyFootprints_sol6_1.R`: correct destination-policy vector geometry.
+- `R/fractionalCoverage_sol6_1.R`: exact coverage and tiled writing.
+- `data/riparianBufferPolicy.csv`: documented initial policy table.
+- `README.md`, `riparianBuffers_Sol6_1.Rmd`, `NEWS.md`.
+- `tests/unitTests.R`, `tests/testthat/helper-fixtures.R`, and tests for policies, footprints, coverage and module integration.
+- `scripts/demo_riparianBuffers_Sol6_1.R`: offline small example.
+
+Group small helpers rather than creating further files or adding unrelated infrastructure.
+
+## 6. Tests and acceptance criteria
+
+Run offline deterministic synthetic tests before remote data preparation:
+- Straight streams with analytically known 20/30/50 m buffers and cell fractions, including zero width.
+- All four hydrology classes and missing classification attributes.
+- Lake shoreline buffers with lake interiors included; stream-over-lake areas counted once.
+- A cell wholly inside a mapped lake and study area returns 1, including a cell far from the shoreline, with zero lake-buffer width, or without offshore jurisdiction coverage. A partly lake-covered cell counts lake area plus non-overlapping buffer area using full-cell area as its denominator. Documentation examples must match these tests.
+- Overlapping stream/lake buffers do not double-count.
+- Two adjacent jurisdictions with unequal widths, including features entirely across the border.
+- Features just outside study-area/tile boundaries that contribute buffers inside.
+- Jurisdiction coverage gaps/overlaps and invalid/duplicate/missing policies.
+- Empty streams/lakes, no footprint, full-cell coverage, partial study-area cells, and outside-area NA values.
+- Non-square planning cells and geometry alignment; no rounded resolution-ratio assumption.
+- Exact-coverage fixture accuracy and tiled-versus-untiled equivalence across tile boundaries.
+- Minimal `simInit()`/`spades()` integration using supplied offline inputs, verifying outputs and no hidden downloads.
+- Compatibility smoke test of the nested fraction structure expected by Landbase, with any adapter explicit and outside the joint run; do not modify Landbase.
+- Joint offline `simInit()`/`spades()` test loading both modules in one simulation with supplied synthetic inputs: both `Riparian` and `Riparian_sol6_1` must exist, shared inputs must remain unchanged, and each result must match its respective standalone baseline. Test both module-list orders to expose hidden order dependencies. Handle original-module debugging stops only in the isolated test harness, without editing the original files.
+- Test independent fallback preparation and unsuffixed supplied-input overrides; verify common inputs remain unchanged and no output metadata collisions, writable file/cache collisions, or unexpected shared-state changes occur. Confirm suffixed prepared outputs are not mistakenly declared as input aliases.
+- Test default TRUE creates the raster and readable polygon Shapefile with expected CRS and sidecars; FALSE creates no vector output and leaves raster values unchanged. Test tiled append, empty footprints, pre-existing output protection, invalid boolean values, and agreement between exported polygon coverage and the raster fractions within numerical tolerance.
+
+The old output is a comparison baseline only, not a correctness oracle: changed policy footprints are deliberate.
+
+## 7. Separate Angela demonstration and rollout
+
+Add an opt-in `EasternCanadaForAngela/run_riparianBuffers_Sol6_1.R`, leaving the existing script and GeoTIFFs unchanged. Use the existing study area and 1000 m planning grid, validate cached inputs, and isolate new outputs/cache under a `_sol6_1`-specific location. Include a small joint-run example showing separate original/new parameters and reading `Riparian` versus `Riparian_sol6_1`. Document that Landbase's existing explicit load-order reference and input still target the old module/result; selecting the new result needs separate explicit integration work.
+
+After unit/integration tests, run a small representative real-data subset spanning a jurisdiction boundary, compare geometries/fractions, and measure tile runtime/memory. Report estimates before a full Angela-area execution. A full-area production run is **not part of initial implementation validation** and should be requested separately after reviewing the subset.
+
+## Completion
+
+Deliver the new isolated module, offline tests, documentation and opt-in runner. Report tests run, unresolved data/API limitations, expected differences from the old module, and the subset performance results. Do not modify the original module or automatically replace its existing outputs.

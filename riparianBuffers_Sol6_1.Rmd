@@ -1,0 +1,89 @@
+---
+title: "riparianBuffers_Sol6_1"
+output: html_document
+---
+
+# Purpose
+
+This module creates `sim$Riparian_sol6_1$riparianFraction`, an exact projected
+vector-intersection coverage raster on the supplied `PlanningGrid`. It is a
+separate result from `sim$Riparian` and never changes the original module.
+
+# Meaning of the fraction
+
+> The output measures combined lake-and-riparian-buffer coverage, not riparian
+> land alone. Mapped lake water surfaces are included along with policy-width
+> buffers on surrounding land. A planning cell entirely inside a mapped lake
+> and the study area has `riparianFraction = 1`. Lake water overlapped by stream
+> or lake buffers is counted once, not added repeatedly. The denominator is the
+> full planning-cell area, including water. Cells entirely outside the study
+> area are `NA`. These values are a hydrological influence/coverage signal, not
+> a classification of harvestable land.
+
+The engine unions policy buffer polygons and lake interiors before intersecting
+them with cells. Thus 10 ha buffered land plus 5 ha lake water in a 100 ha cell
+is $0.15$, not a land-normalized fraction. Stream centrelines provide buffers
+but not explicit river-water polygons. The lake polygon is the only water
+surface included directly.
+
+```text
+stream ───── buffer ────────┐
+                            ├─ union once ── cell intersection
+mapped lake interior ───────┘
+```
+
+# Policy and geometry
+
+Buffers use the receiving (destination) jurisdiction's width, including for a
+feature on the other side of a boundary, and are then clipped to that receiving
+jurisdiction. Lake interiors are independent of policy and jurisdiction
+coverage. `ORD_STRA >= 4` is a large stream and `Lake_area >= 1` km² is a large
+lake. The bundled six-province/default table is an analytical assumption, not
+legal advice. Unmatched jurisdictions are recorded as default-policy fallback.
+
+All widths and areas are planar in the projected metre CRS of `PlanningGrid`.
+“Exact” denotes polygon--cell intersection within floating-point tolerance,
+not a perfect curve, geodesic area, or a completeness claim about hydrology.
+
+# Inputs and outputs
+
+`studyArea` is required. `PlanningGrid` is a common, read-only input; absent a
+supplied/upstream grid, standalone preparation creates a 240 m fallback. The
+optional unsuffixed inputs are `Jurisdiction`, `riparianBufferPolicy`,
+`Hydrology_streams`, and `Hydrology_lakes`. Missing streams and lakes are
+obtained independently from HydroRIVERS North America and HydroLAKES global.
+Internet and substantial cache storage are required for that route.
+
+The output list includes policy, source/projection metadata, geometry-repair
+and fallback diagnostics, and `lakeInteriorsExcluded = FALSE`. It intentionally
+has no original-module `raster_m` field.
+
+# Vector export
+
+`exportVectorBuffer_sol6_1 = TRUE` by default writes the final unioned
+lake-and-buffer numerator as `riparian_buffers_sol6_1.shp` next to the GeoTIFF.
+`FALSE` writes the identical raster but no vector file. A Shapefile requires
+its `.shp`, `.shx`, `.dbf`, and `.prj` sidecars; its short `tile_id` field marks
+tile-core pieces. Tile seams can remain in the vector layer, are not ecological
+boundaries, and do not duplicate coverage. Export stops before portable
+Shapefile component-size limits rather than truncating geometry.
+
+# Minimal supplied-input run
+
+```{r, eval=FALSE}
+sim <- SpaDES.core::simInit(
+  times = list(start = 1, end = 1), modules = "riparianBuffers_Sol6_1",
+  objects = list(studyArea = studyArea, PlanningGrid = PlanningGrid,
+                 Jurisdiction = Jurisdiction,
+                 Hydrology_streams = Hydrology_streams,
+                 Hydrology_lakes = Hydrology_lakes),
+  params = list(riparianBuffers_Sol6_1 = list(
+    tileCells_sol6_1 = 128L, exportVectorBuffer_sol6_1 = TRUE)))
+sim <- SpaDES.core::spades(sim)
+fraction <- sim$Riparian_sol6_1$riparianFraction
+```
+
+For a joint run, explicitly supply one shared `PlanningGrid` and select either
+`Riparian$riparianFraction` or `Riparian_sol6_1$riparianFraction` downstream.
+Landbase's existing load order and input target the original result; adopting
+the new result requires separate explicit integration work.
