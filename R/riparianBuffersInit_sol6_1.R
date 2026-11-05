@@ -1,4 +1,5 @@
 riparianBuffersInit_sol6_1 <- function(sim) {
+  # Require spatial context before preparing any optional data or writing outputs.
   required <- c("studyArea", "PlanningGrid")
   for (name in required) {
     if (is.null(sim[[name]])) {
@@ -9,6 +10,7 @@ riparianBuffersInit_sol6_1 <- function(sim) {
       )
     }
   }
+  # An upstream promise must be fulfilled; downloading a competing fallback is unsafe.
   optional <- c(
     "Jurisdiction",
     "riparianBufferPolicy",
@@ -25,9 +27,11 @@ riparianBuffersInit_sol6_1 <- function(sim) {
       )
     }
   }
+  # Read only this module's processing controls, not the original module's parameters.
   params <- SpaDES.core::P(sim, module = "riparianBuffers_Sol6_1")
   tile <- params$tileCells_sol6_1
   export <- params$exportVectorBuffer_sol6_1
+  # Reject invalid tile sizes before coercion to integer or allocation of raster stripes.
   if (
     !is.numeric(tile) ||
       length(tile) != 1L ||
@@ -39,19 +43,23 @@ riparianBuffersInit_sol6_1 <- function(sim) {
   ) {
     stop("tileCells_sol6_1 must be one finite positive integer.")
   }
+  # Export is optional, but the decision must be one explicit TRUE or FALSE.
   if (!is.logical(export) || length(export) != 1L || is.na(export)) {
     stop("exportVectorBuffer_sol6_1 must be one non-missing logical value.")
   }
+  # Isolate all writable products from the original module's files and caches.
   paths <- SpaDES.core::paths(sim)
   input <- SpaDES.core::inputPath(sim)
   output <- file.path(SpaDES.core::outputPath(sim), "riparianBuffers_sol6_1")
   scratchRoot <- paths[["scratchPath"]]
+  # Provide a module-specific staging location when no scratch path was configured.
   if (is.null(scratchRoot) || !length(scratchRoot) || !nzchar(scratchRoot)) {
     scratchRoot <- file.path(output, "scratch_sol6_1")
   }
   scratch <- file.path(scratchRoot, "riparianBuffers_sol6_1")
   cache <- file.path(input, "riparianBuffers_sol6_1")
   moduleDir <- file.path(SpaDES.core::modulePath(sim), "riparianBuffers_Sol6_1")
+  # Validate supplied inputs, obtain missing sources, and select whole halo features.
   prepared <- prepareRiparianInputs_sol6_1(
     studyArea = sim$studyArea,
     PlanningGrid = sim$PlanningGrid,
@@ -63,8 +71,10 @@ riparianBuffersInit_sol6_1 <- function(sim) {
     moduleDir = moduleDir,
     reuseDir = input
   )
+  # Create destination directories only after the input contract has been checked.
   dir.create(output, recursive = TRUE, showWarnings = FALSE)
   dir.create(scratch, recursive = TRUE, showWarnings = FALSE)
+  # Construct and union destination-policy footprints, then calculate tiled cell coverage.
   result <- fractionalCoverage_sol6_1(
     studyArea = prepared$studyArea,
     PlanningGrid = prepared$PlanningGrid,
@@ -77,10 +87,12 @@ riparianBuffersInit_sol6_1 <- function(sim) {
     tileCells = as.integer(tile),
     exportVector = export
   )
+  # Publish prepared copies under suffixed names; common input objects stay unchanged.
   sim$Jurisdiction_sol6_1 <- prepared$Jurisdiction
   sim$riparianBufferPolicy_sol6_1 <- prepared$policy
   sim$Hydrology_streams_sol6_1 <- prepared$streams
   sim$Hydrology_lakes_sol6_1 <- prepared$lakes
+  # Attach scientific conventions and provenance to the raster and export paths.
   sim$Riparian_sol6_1 <- c(
     result,
     list(
@@ -107,5 +119,6 @@ riparianBuffersInit_sol6_1 <- function(sim) {
       exportVectorBuffer_sol6_1 = export
     )
   )
+  # Return the updated simulation without printing its potentially large contents.
   invisible(sim)
 }

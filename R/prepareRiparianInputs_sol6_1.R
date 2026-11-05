@@ -1,4 +1,6 @@
 riparianSource_sol6_1 <- function(dataset) {
+  # Map each supported dataset to its immutable distribution metadata and the
+  # attribute/geometry contract expected after extraction.
   switch(
     dataset,
     streams = list(
@@ -30,8 +32,12 @@ riparianSource_sol6_1 <- function(dataset) {
 }
 
 validateShapefile_sol6_1 <- function(path, source) {
+  # A shapefile is a multi-file dataset: derive the common stem before checking
+  # its mandatory geometry, index, attributes, and projection sidecars.
   stem <- sub("\\.shp$", "", path, ignore.case = TRUE)
   sidecars <- paste0(stem, c(".shp", ".shx", ".dbf", ".prj"))
+  # Reject absent or zero-byte components rather than letting downstream reads
+  # fail with less specific spatial-data errors.
   if (!all(file.exists(sidecars)) || any(file.info(sidecars)$size <= 0)) {
     stop(
       "Incomplete shapefile at ",
@@ -39,7 +45,10 @@ validateShapefile_sol6_1 <- function(path, source) {
       "; require nonempty .shp/.shx/.dbf/.prj components."
     )
   }
+  # Read only the header to validate the cache without loading all features.
   header <- terra::vect(path, proxy = TRUE)
+  # Require a declared CRS, the source-specific classification field, and the
+  # advertised feature type before considering cached data trustworthy.
   if (
     !nzchar(terra::crs(header)) ||
       !source$field %in% names(header) ||
@@ -64,17 +73,22 @@ obtainRiparianSource_sol6_1 <- function(
   reuseDir = NULL,
   download = utils::download.file
 ) {
+  # Resolve the selected source once so all cache, archive, and validation work
+  # uses the same source definition.
   source <- riparianSource_sol6_1(dataset)
+  # Keep each raw source in a module-specific cache namespace.
   localDir <- file.path(cacheDir, paste0(dataset, "_sol6_1"))
   dir.create(localDir, recursive = TRUE, showWarnings = FALSE)
   archive <- file.path(localDir, source$archive)
   extraction <- file.path(localDir, "raw_sol6_1")
   marker <- file.path(localDir, "complete_source_sol6_1.rds")
+  # Retain enough context to make failures actionable when propagated below.
   context <- paste0(source$name, " [", source$url, "] at ", localDir)
   tryCatch(
     {
       # Only trust our complete raw extraction when its URL/provenance matches.
       if (file.exists(marker)) {
+        # A marker records a previously validated, uncropped extraction.
         manifest <- readRDS(marker)
         if (
           identical(manifest$url, source$url) &&
@@ -87,6 +101,8 @@ obtainRiparianSource_sol6_1 <- function(
         }
       }
       # Old-module archives are read-only sources, never old cropped working layers.
+      # Prefer the local archive, then look for an exact matching archive in the
+      # optional reuse directory; never reuse an extracted derivative.
       candidates <- unique(c(
         archive,
         if (!is.null(reuseDir) && dir.exists(reuseDir)) {
@@ -100,14 +116,19 @@ obtainRiparianSource_sol6_1 <- function(
       ))
       archiveToUse <- NULL
       contents <- NULL
+      # Inspect candidate ZIP directories first so corrupt or incomplete files
+      # are not extracted into the working cache.
       for (candidate in candidates[file.exists(candidates)]) {
         listing <- tryCatch(
           utils::unzip(candidate, list = TRUE),
           error = function(e) NULL
         )
         if (!is.null(listing)) {
+          # Locate the expected shapefile regardless of its archive subfolder.
           main <- listing$Name[basename(listing$Name) == source$shape]
           if (length(main) == 1L) {
+            # A usable shapefile must include nonempty geometry, index,
+            # attribute-table, and projection components.
             required <- paste0(
               sub("\\.shp$", "", main),
               c(".shp", ".shx", ".dbf", ".prj")
@@ -123,6 +144,7 @@ obtainRiparianSource_sol6_1 <- function(
           }
         }
       }
+      # Track whether the raw archive was found locally versus downloaded now.
       reused <- !is.null(archiveToUse)
       if (is.null(archiveToUse)) {
         # Never overwrite a damaged cache silently; leave it for diagnosis.
@@ -132,6 +154,8 @@ obtainRiparianSource_sol6_1 <- function(
             archive
           )
         }
+        # Download to a temporary name so a failed transfer cannot masquerade
+        # as a valid cached archive on a later run.
         partial <- paste0(archive, ".partial_sol6_1")
         message(
           "Downloading ",
@@ -148,6 +172,7 @@ obtainRiparianSource_sol6_1 <- function(
         if (!identical(as.integer(status), 0L) || !file.exists(partial)) {
           stop("Download did not complete: ", partial)
         }
+        # Verify ZIP contents before atomically publishing the completed file.
         contents <- utils::unzip(partial, list = TRUE)
         main <- contents$Name[basename(contents$Name) == source$shape]
         if (length(main) != 1L) {
@@ -172,6 +197,7 @@ obtainRiparianSource_sol6_1 <- function(
         archiveToUse <- archive
       }
       # Base-R unzip avoids reproducible's platform-dependent ZIP extraction path.
+      # Refuse absolute paths and parent-directory traversal in archive members.
       if (
         any(grepl(
           "(^|[/\\\\])\\.\\.([/\\\\]|$)|^[/\\\\]|^[A-Za-z]:",
@@ -180,6 +206,7 @@ obtainRiparianSource_sol6_1 <- function(
       ) {
         stop("Unsafe path in source ZIP: ", archiveToUse)
       }
+      # Extract only after structural checks have made the archive safe to use.
       dir.create(extraction, recursive = TRUE, showWarnings = FALSE)
       utils::unzip(archiveToUse, exdir = extraction)
       shapes <- list.files(
@@ -188,11 +215,14 @@ obtainRiparianSource_sol6_1 <- function(
         recursive = TRUE,
         full.names = TRUE
       )
+      # The source contract permits exactly one main shapefile after extraction.
       shape <- shapes[basename(shapes) == source$shape]
       if (length(shape) != 1L) {
         stop("Expected exactly one ", source$shape, " in ", extraction)
       }
+      # Confirm the extracted vector itself still meets the source contract.
       validateShapefile_sol6_1(shape, source)
+      # Record provenance and the uncropped status required for future reuse.
       saveRDS(
         list(
           url = source$url,
@@ -227,9 +257,13 @@ readRiparianHalo_sol6_1 <- function(raw, halo, targetCRS) {
     diff(as.vector(terra::ext(halo))[3:4])
   ) /
     256
+  # Add vertices along the projected halo before CRS transformation so curved
+  # edges are represented conservatively in the source coordinate system.
   dense <- terra::densify(terra::deepcopy(halo), interval = interval)
   native <- terra::project(dense, terra::crs(header))
   nativeExt <- terra::ext(native)
+  # Pad by one densification interval to protect against transformation and
+  # envelope-rounding edge effects during the coarse source filter.
   margin <- max(nativeExt[2] - nativeExt[1], nativeExt[4] - nativeExt[3]) / 256
   filter <- terra::as.polygons(
     terra::ext(
@@ -240,14 +274,19 @@ readRiparianHalo_sol6_1 <- function(raw, halo, targetCRS) {
     ),
     crs = terra::crs(header)
   )
+  # Read candidates using the native-CRS filter; features are intentionally
+  # retained whole and are selected precisely after projection.
   v <- terra::vect(raw$path, filter = filter)
   validateVector_sol6_1(v, raw$source$name, raw$source$type, targetCRS)
 }
 
 selectRiparianHalo_sol6_1 <- function(x, halo) {
+  # Preserve an explicitly supplied empty vector without calling spatial
+  # predicates that may not support zero features.
   if (!nrow(x)) {
     return(x)
   }
+  # Keep whole features that intersect the buffered study envelope.
   index <- which(as.vector(terra::relate(x, halo, "intersects")))
   x[index, ]
 }
@@ -264,6 +303,8 @@ prepareRiparianInputs_sol6_1 <- function(
   reuseDir = NULL,
   obtainSource = obtainRiparianSource_sol6_1
 ) {
+  # Capture original CRS declarations for diagnostics before inputs are copied,
+  # repaired, or projected to the PlanningGrid working CRS.
   sourceCRS <- list(
     studyArea = terra::crs(
       if (inherits(studyArea, "SpatVector")) {
@@ -274,20 +315,26 @@ prepareRiparianInputs_sol6_1 <- function(
     ),
     PlanningGrid = terra::crs(PlanningGrid)
   )
+  # Validate and locally repair the study boundary before deriving extents.
   a <- validateVector_sol6_1(studyArea, "studyArea", "polygons")
   area <- a$vector
   if (!nrow(area)) {
     stop("studyArea must contain at least one polygon.")
   }
+  # Buffer widths are distance-based, so both study area and output grid must
+  # use the same projected metre CRS.
   validateMetreCRS_sol6_1(area, "studyArea")
   validatePlanningGrid_sol6_1(PlanningGrid, area)
   target <- terra::crs(PlanningGrid)
+  # State whether assumptions came from bundled analytical defaults or caller
+  # input; neither source represents independently verified legal policy.
   policySource <- if (is.null(policy)) {
     "bundled simplified analytical assumptions (not legal US/Canadian policy)"
   } else {
     "supplied policy table (not independently legally verified)"
   }
   if (is.null(policy)) {
+    # Load the module's default policy only when no policy table was supplied.
     file <- file.path(moduleDir, "data", "riparianBufferPolicy.csv")
     if (!file.exists(file)) {
       stop("Bundled analytical policy not found: ", file)
@@ -295,9 +342,13 @@ prepareRiparianInputs_sol6_1 <- function(
     policy <- utils::read.csv(file, stringsAsFactors = FALSE)
   }
   # Validate policy before using any widths to prepare geographic input data.
+  # Give resolution a placeholder jurisdiction so policy schema and numeric
+  # widths are checked independently of boundary-source availability.
   dummy <- terra::deepcopy(area)
   dummy$jurisdiction_code <- rep("default", nrow(dummy))
   checked <- resolveRiparianPolicy_sol6_1(policy, dummy)$policy
+  # The largest class-specific width defines a conservative metre-based halo
+  # around the study extent for all hydrologic input reads.
   haloWidth <- max(as.matrix(checked[, c(
     "small_stream",
     "large_stream",
@@ -305,6 +356,7 @@ prepareRiparianInputs_sol6_1 <- function(
     "large_lake"
   )]))
   box <- terra::ext(area)
+  # Construct the rectangular halo in the PlanningGrid CRS and metre units.
   halo <- terra::as.polygons(
     terra::ext(
       box[1] - haloWidth,
@@ -316,8 +368,11 @@ prepareRiparianInputs_sol6_1 <- function(
   )
   repairs <- list(studyArea = a$repaired)
   provenance <- list()
+  # Normalise either downloaded raw data or caller data to a validated,
+  # projected whole-feature layer for one required input dataset.
   prepare <- function(x, dataset, type) {
     if (is.null(x)) {
+      # Obtain raw global/continental data, then read only halo candidates.
       raw <- obtainSource(dataset, cacheDir, reuseDir)
       sourceCRS[[dataset]] <<- terra::crs(terra::vect(raw$path, proxy = TRUE))
       prepared <- readRiparianHalo_sol6_1(raw, halo, target)
@@ -329,6 +384,7 @@ prepareRiparianInputs_sol6_1 <- function(
         coverage = "raw source spatially filtered to halo; source mapping completeness not guaranteed"
       )
     } else {
+      # Caller-supplied data remain read-only: validation operates on a copy.
       sourceCRS[[dataset]] <<- terra::crs(
         if (inherits(x, "SpatVector")) x else terra::vect(x)
       )
@@ -343,18 +399,25 @@ prepareRiparianInputs_sol6_1 <- function(
         coverage = "unknown; complete halo coverage cannot be guaranteed from feature extents alone"
       )
     }
+    # Record any local geometry repairs performed during validation.
     repairs[[dataset]] <<- prepared$repaired
     v <- prepared$vector
     if (dataset %in% c("streams", "lakes")) {
+      # Assign the two policy classes from source attributes or supplied class.
       v <- classifyHydrology_sol6_1(v, dataset)
     }
+    # Apply the exact working-CRS halo predicate after any coarse source filter.
     selectRiparianHalo_sol6_1(v, halo)
   }
+  # Jurisdictions establish applicable policy before hydrology is prepared.
   j <- prepare(Jurisdiction, "jurisdiction", "polygons")
   resolved <- resolveRiparianPolicy_sol6_1(policy, j)
+  # Prepare both feature types needed to generate stream and lake buffers.
   s <- prepare(streams, "streams", "lines")
   l <- prepare(lakes, "lakes", "polygons")
+  # Require non-lake land to have one non-overlapping policy jurisdiction.
   validateJurisdictionCoverage_sol6_1(resolved$Jurisdiction, area, l)
+  # Return validated inputs plus auditable policy, CRS, repair, and source data.
   list(
     studyArea = area,
     PlanningGrid = PlanningGrid,

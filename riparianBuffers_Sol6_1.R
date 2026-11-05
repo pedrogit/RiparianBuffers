@@ -1,4 +1,5 @@
 ## Functions in R/ are module-scoped by SpaDES; shared inputs are read-only.
+# Register the scientific contract and dependencies used by SpaDES validation.
 defineModule(
   sim,
   list(
@@ -25,6 +26,7 @@ defineModule(
     citation = list(),
     documentation = list("README.md", "riparianBuffers_Sol6_1.Rmd", "NEWS.md"),
     reqdPkgs = list("SpaDES.core", "terra", "sf", "exactextractr"),
+    # Processing controls affect tile size and export, not jurisdiction policy widths.
     parameters = bindrows(
       defineParameter(
         "tileCells_sol6_1",
@@ -43,6 +45,7 @@ defineModule(
         "Export final combined lake-and-buffer footprint as Shapefile alongside GeoTIFF."
       )
     ),
+    # Declare shared inputs without claiming ownership of upstream data products.
     inputObjects = bindrows(
       expectsInput(
         "studyArea",
@@ -75,6 +78,7 @@ defineModule(
         "Optional halo-complete lakes with Lake_area (km2) or validated hydro_class; global HydroLAKES when missing."
       )
     ),
+    # Publish only suffixed outputs so both riparian implementations can coexist.
     outputObjects = bindrows(
       createsOutput(
         "Riparian_sol6_1",
@@ -106,15 +110,18 @@ defineModule(
 )
 
 doEvent.riparianBuffers_Sol6_1 <- function(sim, eventTime, eventType) {
+  # Run once during initialization; no recurring events are scheduled.
   if (identical(eventType, "init")) {
     sim <- riparianBuffersInit_sol6_1(sim)
   } else {
+    # Reject unexpected event names rather than silently producing no result.
     stop("Undefined event type in riparianBuffers_Sol6_1: ", eventType)
   }
   invisible(sim)
 }
 
 .inputObjects <- function(sim) {
+  # The user or an upstream module must define the geographic scope.
   if (is.null(sim$studyArea)) {
     stop("riparianBuffers_Sol6_1 requires studyArea.")
   }
@@ -123,9 +130,11 @@ doEvent.riparianBuffers_Sol6_1 <- function(sim, eventTime, eventType) {
     is.null(sim$PlanningGrid) &&
       !SpaDES.core::suppliedElsewhere("PlanningGrid", sim)
   ) {
+    # Build the standalone grid only after validating polygon geometry and metre units.
     area <- validateVector_sol6_1(sim$studyArea, "studyArea", "polygons")$vector
     validateMetreCRS_sol6_1(area, "studyArea")
     e <- terra::ext(area)
+    # Round up the extent so the 240 m fallback does not omit boundary strips.
     sim$PlanningGrid <- terra::rast(
       xmin = e[1],
       xmax = e[1] + ceiling((e[2] - e[1]) / 240) * 240,

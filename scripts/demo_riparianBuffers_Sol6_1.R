@@ -7,6 +7,7 @@ demo_riparianBuffers_sol6_1 <- function(
   project_root = getwd(),
   export_vector = TRUE
 ) {
+  # Require a caller-owned workspace and an unambiguous vector-export choice.
   stopifnot(
     is.character(scratch_path),
     length(scratch_path) == 1L,
@@ -15,6 +16,7 @@ demo_riparianBuffers_sol6_1 <- function(
     length(export_vector) == 1L,
     !is.na(export_vector)
   )
+  # Fail early when the spatial construction and simulation packages are unavailable.
   if (
     !requireNamespace("SpaDES.core", quietly = TRUE) ||
       !requireNamespace("terra", quietly = TRUE) ||
@@ -25,6 +27,7 @@ demo_riparianBuffers_sol6_1 <- function(
   if (export_vector && !requireNamespace("sf", quietly = TRUE)) {
     stop("export_vector=TRUE requires sf.")
   }
+  # Keep demonstration inputs, cache, outputs and staging separate from production files.
   root <- normalizePath(scratch_path, winslash = "/", mustWork = FALSE)
   paths <- list(
     modulePath = file.path(project_root, "modules"),
@@ -43,6 +46,7 @@ demo_riparianBuffers_sol6_1 <- function(
   # EPSG:5070 uses metres. Two jurisdictions meet at x = 500; the stream lies
   # in ON but must use QC's destination width for its contribution eastward.
   crs <- "EPSG:5070"
+  # Convert closed coordinate rings to the SpatVector inputs expected by the module.
   polygon <- function(coords) {
     terra::vect(sf::st_sf(
       geometry = sf::st_sfc(
@@ -51,6 +55,7 @@ demo_riparianBuffers_sol6_1 <- function(
       )
     ))
   }
+  # Define a one-square-kilometre study area in the metre-based projection.
   study_area <- polygon(rbind(
     c(0, 0),
     c(1000, 0),
@@ -58,6 +63,7 @@ demo_riparianBuffers_sol6_1 <- function(
     c(0, 1000),
     c(0, 0)
   ))
+  # Split the square into western Ontario and eastern Quebec destination polygons.
   jurisdiction <- do.call(
     rbind,
     list(
@@ -72,6 +78,7 @@ demo_riparianBuffers_sol6_1 <- function(
     )
   )
   jurisdiction$jurisdiction_code <- c("ON", "QC")
+  # Use sixteen 250 m planning cells independently of vector buffer precision.
   grid <- terra::rast(
     xmin = 0,
     xmax = 1000,
@@ -80,6 +87,7 @@ demo_riparianBuffers_sol6_1 <- function(
     resolution = 250,
     crs = crs
   )
+  # Place a large stream 25 m west of the border to exercise cross-border buffering.
   streams <- terra::vect(sf::st_sf(
     ORD_STRA = 4,
     geometry = sf::st_sfc(
@@ -87,6 +95,7 @@ demo_riparianBuffers_sol6_1 <- function(
       crs = crs
     )
   ))
+  # Include mapped lake water as well as a shoreline buffer in the eastern half.
   lakes <- terra::vect(sf::st_sf(
     Lake_area = 0.5,
     geometry = sf::st_sfc(
@@ -100,6 +109,7 @@ demo_riparianBuffers_sol6_1 <- function(
       crs = crs
     )
   ))
+  # Supply simplified analytical widths with smaller receiving buffers in Quebec.
   policy <- data.frame(
     jurisdiction = c("default", "ON", "QC"),
     small_stream = c(30, 30, 20),
@@ -108,6 +118,7 @@ demo_riparianBuffers_sol6_1 <- function(
     large_lake = c(50, 50, 40)
   )
 
+  # Supply every input explicitly so the offline example needs no downloads.
   sim <- SpaDES.core::simInit(
     times = list(start = 1, end = 1),
     modules = "riparianBuffers_Sol6_1",
@@ -127,7 +138,9 @@ demo_riparianBuffers_sol6_1 <- function(
       )
     )
   )
+  # Execute initialization, including tiled coverage and optional vector export.
   sim <- SpaDES.core::spades(sim)
+  # Check that output alignment and lake-inclusion conventions survived execution.
   stopifnot(
     terra::compareGeom(
       sim$Riparian_sol6_1$riparianFraction,

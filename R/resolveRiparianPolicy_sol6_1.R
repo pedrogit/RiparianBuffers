@@ -1,4 +1,5 @@
 resolveRiparianPolicy_sol6_1 <- function(policy, Jurisdiction) {
+  # Require one jurisdiction key and a width in metres for each hydrological class.
   fields <- c("small_stream", "large_stream", "small_lake", "large_lake")
   required <- c("jurisdiction", fields)
   if (!is.data.frame(policy) || !all(required %in% names(policy))) {
@@ -7,11 +8,13 @@ resolveRiparianPolicy_sol6_1 <- function(policy, Jurisdiction) {
       paste(required, collapse = ", ")
     )
   }
+  # Work on a normalized local table; discard unrelated columns without changing inputs.
   policy <- as.data.frame(policy[, required], stringsAsFactors = FALSE)
   policy$jurisdiction <- trimws(as.character(policy$jurisdiction))
   policy$jurisdiction[tolower(policy$jurisdiction) == "default"] <- "default"
   policy$jurisdiction[policy$jurisdiction != "default"] <-
     toupper(policy$jurisdiction[policy$jurisdiction != "default"])
+  # Duplicate or missing keys would make policy matching ambiguous.
   if (
     anyNA(policy$jurisdiction) ||
       any(!nzchar(policy$jurisdiction)) ||
@@ -19,9 +22,11 @@ resolveRiparianPolicy_sol6_1 <- function(policy, Jurisdiction) {
   ) {
     stop("Policy jurisdiction keys must be nonempty, non-missing and unique.")
   }
+  # Every unlisted jurisdiction needs an explicit analytical fallback row.
   if (!"default" %in% policy$jurisdiction) {
     stop("Policy must contain one default row.")
   }
+  # Width zero is valid; negative, missing or infinite distances are not.
   for (field in fields) {
     if (
       !is.numeric(policy[[field]]) ||
@@ -55,10 +60,12 @@ resolveRiparianPolicy_sol6_1 <- function(policy, Jurisdiction) {
       "Jurisdiction requires jurisdiction_code, jurisdiction, NAME_En or a recognized name field."
     )
   }
+  # Preserve original jurisdiction labels for readable fallback diagnostics.
   original <- trimws(as.character(Jurisdiction[[key[1]]][, 1]))
   if (anyNA(original) || any(!nzchar(original))) {
     stop("Jurisdiction names/codes must not be missing or empty.")
   }
+  # Translate recognized province names, including accented Quebec, to CSV keys.
   mapping <- c(
     "Ontario" = "ON",
     "Quebec" = "QC",
@@ -68,10 +75,12 @@ resolveRiparianPolicy_sol6_1 <- function(policy, Jurisdiction) {
     "Prince Edward Island" = "PE",
     "Newfoundland and Labrador" = "NL"
   )
+  # Explicit codes pass through; known names are replaced by their canonical codes.
   code <- toupper(original)
   mapped <- match(tolower(original), tolower(names(mapping)))
   code[!is.na(mapped)] <- unname(mapping[mapped[!is.na(mapped)]])
   code[tolower(original) == "default"] <- "default"
+  # Record each unmatched identity before materializing its default widths.
   fallback <- !code %in% policy$jurisdiction
   diagnostics <- unique(data.frame(
     jurisdiction = original[fallback],
@@ -86,12 +95,15 @@ resolveRiparianPolicy_sol6_1 <- function(policy, Jurisdiction) {
     row$jurisdiction <- missingCode
     policy <- rbind(policy, row)
   }
+  # Add resolved matching keys only to the local geometry returned to the caller.
   Jurisdiction$jurisdiction_code <- code
+  # Make analytical defaults visible rather than silently treating them as legal policy.
   if (nrow(diagnostics)) {
     message(
       "Default analytical policy used for: ",
       paste(diagnostics$jurisdiction, collapse = ", ")
     )
   }
+  # Return the expanded policy, keyed polygons and audit table together.
   list(policy = policy, Jurisdiction = Jurisdiction, diagnostics = diagnostics)
 }

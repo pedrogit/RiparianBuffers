@@ -1,5 +1,9 @@
 validateMetreCRS_sol6_1 <- function(x, label) {
+  # Inspect the CRS WKT because buffer widths and areas in this module are
+  # interpreted in projected Cartesian metres.
   wkt <- terra::crs(x)
+  # Reject absent, geographic, and non-projected CRSs; no implicit reprojection
+  # is permitted because the PlanningGrid defines the working projection.
   if (
     !nzchar(wkt) || terra::is.lonlat(x) || !grepl("PROJCRS\\[|PROJCS\\[", wkt)
   ) {
@@ -10,6 +14,7 @@ validateMetreCRS_sol6_1 <- function(x, label) {
   }
   # WKT2 also contains angular units; test the Cartesian coordinate-system units.
   cartesian <- sub(".*CS\\[Cartesian,[0-9]+\\]", "", wkt)
+  # Accept metre/meter units with scale one, while explicitly rejecting feet.
   if (
     !grepl(
       '(LENGTHUNIT|UNIT)\\["(metre|meter)",[[:space:]]*1([,.]|\\])',
@@ -28,19 +33,25 @@ validateMetreCRS_sol6_1 <- function(x, label) {
 }
 
 validateVector_sol6_1 <- function(x, label, type, targetCRS = NULL) {
+  # Accept only in-memory vector formats that terra can safely copy and inspect.
   if (!inherits(x, c("SpatVector", "sf", "sfc"))) {
     stop(label, " must be a SpatVector or sf object.")
   }
   # terra::deepcopy is essential: SpatVectors hold external pointers.
   x <- if (inherits(x, "SpatVector")) terra::deepcopy(x) else terra::vect(x)
+  # Spatial operations require an explicit coordinate reference system.
   if (!nzchar(terra::crs(x))) {
     stop(label, " has no CRS.")
   }
+  # Enforce the expected geometry family when features are present; empty inputs
+  # are allowed to represent intentional absence of a data class.
   if (nrow(x) && !identical(terra::geomtype(x), type)) {
     stop(label, " must contain ", type, ".")
   }
   repaired <- 0L
   if (nrow(x)) {
+    # Repair invalid topology on the private copy and report how many features
+    # required intervention, preserving the caller's original object.
     valid <- terra::is.valid(x)
     if (anyNA(valid) || any(!valid)) {
       repaired <- sum(is.na(valid) | !valid)
@@ -55,6 +66,8 @@ validateVector_sol6_1 <- function(x, label, type, targetCRS = NULL) {
         stop(label, " remains invalid after geometry repair.")
       }
     }
+    # Empty geometries carry no usable spatial support and are not equivalent to
+    # a valid zero-feature vector.
     if (any(terra::is.empty(x))) {
       stop(
         label,
@@ -63,20 +76,26 @@ validateVector_sol6_1 <- function(x, label, type, targetCRS = NULL) {
     }
   }
   if (!is.null(targetCRS) && !terra::same.crs(x, targetCRS)) {
+    # Transform nonempty features into the specified working CRS only after
+    # validity checks; empty vectors receive the CRS declaration directly.
     if (nrow(x)) {
       x <- terra::project(x, targetCRS)
     } else {
       # There are no coordinates to transform; project() can reject empty vectors.
       terra::crs(x) <- targetCRS
     }
+    # Projection can introduce topology defects, so verify it did not do so.
     if (nrow(x) && (anyNA(terra::is.valid(x)) || any(!terra::is.valid(x)))) {
       stop(label, " became invalid during projection.")
     }
   }
+  # Return both the normalised vector and an audit count for the caller.
   list(vector = x, repaired = repaired)
 }
 
 classifyHydrology_sol6_1 <- function(x, kind) {
+  # Select the authoritative source attribute and the two policy classes for
+  # streams (order) or lakes (area).
   stream <- identical(kind, "streams")
   field <- if (stream) "ORD_STRA" else "Lake_area"
   classes <- if (stream) {
@@ -90,6 +109,8 @@ classifyHydrology_sol6_1 <- function(x, kind) {
     return(x)
   }
   if (field %in% names(x)) {
+    # Use the source measurement when present; classifications need finite,
+    # nonnegative values so every feature has an unambiguous threshold result.
     value <- x[[field]][, 1]
     if (!is.numeric(value) || any(!is.finite(value)) || any(value < 0)) {
       stop(
@@ -100,6 +121,8 @@ classifyHydrology_sol6_1 <- function(x, kind) {
         " must be finite, nonnegative numeric values (no NA)."
       )
     }
+    # Stream order >= 4 and lake area >= 1 receive the corresponding large
+    # class; values below those scientific/policy thresholds are small.
     cls <- ifelse(value >= if (stream) 4 else 1, classes[2], classes[1])
     if (
       "hydro_class" %in%
@@ -114,8 +137,11 @@ classifyHydrology_sol6_1 <- function(x, kind) {
         " classification."
       )
     }
+    # Materialise the derived class for downstream policy-width lookup.
     x$hydro_class <- cls
   } else {
+    # Without the source measurement, require a complete caller-provided class
+    # from the same controlled vocabulary.
     if (
       !"hydro_class" %in% names(x) ||
         anyNA(x$hydro_class) ||
@@ -136,6 +162,8 @@ classifyHydrology_sol6_1 <- function(x, kind) {
 }
 
 validatePlanningGrid_sol6_1 <- function(grid, area) {
+  # The output grid must be a usable single layer with finite, positive cell
+  # dimensions before it can define the analysis projection and extent.
   if (
     !inherits(grid, "SpatRaster") ||
       terra::nlyr(grid) != 1L ||
@@ -147,11 +175,14 @@ validatePlanningGrid_sol6_1 <- function(grid, area) {
       "PlanningGrid must be a nonempty single-layer SpatRaster with positive finite resolution."
     )
   }
+  # Require metre units because all buffer widths are expressed in metres.
   validateMetreCRS_sol6_1(grid, "PlanningGrid")
   # The study CRS is the specified working projection; do not silently select another.
   if (!terra::same.crs(grid, area)) {
     stop("PlanningGrid and studyArea must share their projected metre CRS.")
   }
+  # Compare extents with a resolution-scaled tolerance for floating-point
+  # rounding while requiring every study-area edge to lie within the grid.
   e <- as.vector(terra::ext(grid))
   a <- as.vector(terra::ext(area))
   tol <- max(terra::res(grid)) * 1e-8
@@ -173,19 +204,26 @@ validateJurisdictionCoverage_sol6_1 <- function(
   areaTolerance = 1e-6
 ) {
   # Geometric area in the chosen projection, not geodesic expanse's default.
+  # Treat NULL and zero-feature vectors as zero area for the edge cases below.
   area <- function(x) {
     if (is.null(x) || !nrow(x)) 0 else sum(terra::expanse(x, transform = FALSE))
   }
+  # Dissolve study polygons, then remove lake surfaces: only non-lake land
+  # needs a jurisdiction for terrestrial riparian-policy assignment.
   land <- terra::aggregate(studyArea)
   if (nrow(lakes)) {
     land <- terra::erase(land, terra::aggregate(lakes))
   }
   if (!nrow(Jurisdiction)) {
+    # An empty jurisdiction layer is acceptable only when no non-lake land
+    # remains, such as a study area wholly occupied by lakes.
     if (area(land) > areaTolerance) {
       stop("Jurisdiction has no polygons covering study-area non-lake land.")
     }
     return(invisible(TRUE))
   }
+  # Intersect with the study area before detecting overlaps, since overlaps
+  # outside the area cannot affect the current analysis.
   clipped <- terra::intersect(Jurisdiction, terra::aggregate(studyArea))
   if (nrow(clipped)) {
     # Dissolving can only reduce summed area; a positive reduction identifies overlap.
@@ -198,6 +236,8 @@ validateJurisdictionCoverage_sol6_1 <- function(
       )
     }
   }
+  # Erase the dissolved jurisdiction coverage from non-lake land to identify
+  # unassigned territory, allowing only absolute/relative round-off tolerance.
   gap <- if (nrow(land)) {
     terra::erase(land, terra::aggregate(Jurisdiction))
   } else {
