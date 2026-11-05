@@ -45,6 +45,11 @@ All widths and areas are planar in the projected metre CRS of `PlanningGrid`.
 “Exact” denotes polygon--cell intersection within floating-point tolerance,
 not a perfect curve, geodesic area, or a completeness claim about hydrology.
 
+Cell coverage is calculated with `exactextractr`, avoiding explicit GEOS
+intersections for every cell. Runtime packages are `SpaDES.core`, `terra`, `sf`,
+and `exactextractr`. The absolute numerical acceptance tolerance is 1e-6 in
+coverage fraction (1 m² per 1000 m cell), recorded as `coverageTolerance_sol6_1`.
+
 # Inputs and outputs
 
 `studyArea` is required. `PlanningGrid` is a common, read-only input; absent a

@@ -19,12 +19,12 @@ defineModule(
       class = "person"
     ),
     childModules = character(0),
-    version = list(riparianBuffers_Sol6_1 = "0.1.0"),
+    version = list(riparianBuffers_Sol6_1 = "0.1.1"),
     timeframe = as.POSIXlt(c(NA, NA)),
     timeunit = "year",
     citation = list(),
     documentation = list("README.md", "riparianBuffers_Sol6_1.Rmd", "NEWS.md"),
-    reqdPkgs = list("SpaDES.core", "terra", "sf"),
+    reqdPkgs = list("SpaDES.core", "terra", "sf", "exactextractr"),
     parameters = bindrows(
       defineParameter(
         "tileCells_sol6_1",

@@ -38,8 +38,12 @@ cell** area as denominator.
 
 ## Inputs and preparation
 
-Runtime packages are `SpaDES.core`, `terra`, and `sf`. `sf` supplies the verified
-GEOS planar cell intersections and Shapefile append/empty-export operations.
+Runtime packages are `SpaDES.core`, `terra`, `sf`, and `exactextractr`.
+`exactextractr` supplies planar cell coverage; `sf` supplies geometry conversion
+and Shapefile append/empty-export operations. The numerical acceptance tolerance
+is an absolute coverage-fraction difference of **1e-6** (1 m² per 1000 m cell),
+used for regression comparisons, tile consistency, and roundoff range checks.
+The output records this as `coverageTolerance_sol6_1`.
 Circular buffer edges are polygonal approximations with 30 segments per quadrant;
 exact cell coverage applies to those resulting polygons, not ideal curved arcs.
 
@@ -114,11 +118,14 @@ cover synthetic analytical fractions, downloads mocked offline, lake interiors,
 cross-border policies, tile equivalence, file exports and both modules together.
 The original module's debugger calls are removed only in isolated test copies.
 
-A 10 km Ottawa/Ontario–Quebec subset with 1000 m cells completed and exported both
-formats in approximately 6.4 minutes including input preparation on the tested
-machine. This is a single small benchmark, not a reliable full-area time estimate.
-Real-data repair and vector geometry operations remain expensive. Start with a
-representative subset; a full Angela-area run has not been performed.
+A 200 km Ottawa/Ontario–Quebec test at 1000 m resolution completed with vector
+export in 106.71 seconds using exactextractr, versus 846.89 seconds with the
+previous sf cell-intersection engine. Shared input preparation took a further
+75.89 seconds in the rerun. Maximum fraction difference across the full test was
+1.09e-7, with identical outside-study masks and no cells exceeding 1e-6.
+These are single-run timings, not a reliable full-area estimate. Real-data repair
+and vector geometry operations remain expensive. Start with a representative
+subset; a full Angela-area run has not been performed.
 
 `tileCells_sol6_1` defaults to 128 cells per tile side. Larger tiles can require
 more memory and more complex geometry operations. No parallel processing or

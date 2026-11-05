@@ -5,35 +5,21 @@ exactTileFractions_sol6_1 <- function(template, footprint) {
   if (is.null(footprint) || !nrow(footprint)) {
     return(answer)
   }
-  if (!requireNamespace("sf", quietly = TRUE)) {
-    stop("Exact planar polygon coverage requires package 'sf'.")
+  if (!requireNamespace("exactextractr", quietly = TRUE)) {
+    stop("Exact planar polygon coverage requires package 'exactextractr'.")
   }
-  # terra::extract(exact=TRUE) uses a coverage algorithm whose curved-edge
-  # fractions can depend on the tile extent. Intersect the actual polygons
-  # with rectangular cells using GEOS instead. Drop CRS metadata only for
-  # this calculation: coordinates stay unchanged, and areas are explicitly
-  # planar (never spherical or ellipsoidal).
-  polygons <- sf::st_set_crs(sf::st_geometry(sf::st_as_sf(footprint)), NA)
-  e <- unname(as.vector(terra::ext(template)))
-  bounds <- sf::st_bbox(c(xmin = e[1], ymin = e[3], xmax = e[2], ymax = e[4]))
-  cells <- sf::st_make_grid(
-    sf::st_as_sfc(bounds),
-    n = c(terra::ncol(template), terra::nrow(template))
+  # Raster values are irrelevant: coverage and cell IDs come from geometry.
+  grid <- terra::rast(template)
+  terra::values(grid) <- 1
+  hits <- exactextractr::exact_extract(
+    grid, sf::st_as_sf(footprint), include_cell = TRUE, progress = FALSE
   )
-  hits <- sf::st_intersection(cells, polygons)
-  if (!length(hits)) {
+  hits <- do.call(rbind, hits)
+  if (is.null(hits) || !nrow(hits)) {
     return(answer)
   }
-  # st_make_grid orders west-to-east, south-to-north; raster cells are
-  # west-to-east, north-to-south. Preserve each source feature separately:
-  # dissolving here would conceal accidental >1 double coverage.
-  gridIndex <- attr(hits, "idx")[, 1]
-  nc <- terra::ncol(template)
-  cellId <- (terra::nrow(template) - 1 - (gridIndex - 1) %/% nc) *
-    nc +
-    (gridIndex - 1) %% nc +
-    1
-  fraction <- as.numeric(sf::st_area(hits)) / prod(terra::res(template))
+  cellId <- hits$cell
+  fraction <- hits$coverage_fraction
   valid <- is.finite(fraction) & fraction > 0
   if (any(!is.finite(fraction))) {
     stop(
@@ -44,12 +30,12 @@ exactTileFractions_sol6_1 <- function(template, footprint) {
     area <- rowsum(fraction[valid], cellId[valid], reorder = FALSE)
     answer[as.integer(rownames(area))] <- area[, 1]
   }
-  tolerance <- 1e-8
+  tolerance <- 1e-6
   if (
     any(!is.finite(answer)) || any(answer < -tolerance | answer > 1 + tolerance)
   ) {
     stop(
-      "Exact polygon coverage is outside [0,1] by more than 1e-8; check geometry/overlaps."
+      "Exact polygon coverage is outside [0,1] by more than 1e-6; check geometry/overlaps."
     )
   }
   # Only roundoff-sized excursions may be clamped.
@@ -74,7 +60,7 @@ checkShapefileSize_sol6_1 <- function(filename, additionalBytes = 0) {
 
 #' Tiled exact combined lake-and-riparian coverage, with staged publication
 #'
-#' Planar cell intersections require sf; it also provides vector export because
+#' Planar cell coverage requires exactextractr; sf provides vector export because
 #' terra 1.9.27 cannot append to an existing Shapefile
 #' with writeVector(insert=TRUE); sf's GDAL append also supports empty polygons.
 #' Output geometry comprises disjoint tile cores; seams are processing artifacts.

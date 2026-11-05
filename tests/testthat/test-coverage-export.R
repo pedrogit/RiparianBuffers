@@ -5,7 +5,7 @@ testthat::test_that("straight stream widths give analytical exact fractions", {
     testthat::expect_equal(
       sol_vals(r$riparianFraction),
       min(1, 2 * width / 100),
-      tolerance = 1e-10
+      tolerance = 1e-6
     )
     testthat::expect_equal(
       terra::compareGeom(r$riparianFraction, f$PlanningGrid),
@@ -29,13 +29,13 @@ testthat::test_that("lake interiors, shoreline buffers and overlaps count once",
   testthat::expect_equal(
     sol_vals(sol_run(sol_prepared(f))$riparianFraction),
     0.7,
-    tolerance = 1e-8
+    tolerance = 1e-6
   )
   f$streams <- sol_line(45)
   testthat::expect_equal(
     sol_vals(sol_run(sol_prepared(f))$riparianFraction),
     0.7,
-    tolerance = 1e-8
+    tolerance = 1e-6
   )
   f$policy <- sol_policy(0)
   f$lakes <- sol_rect(-1000, 1000, -1000, 1000)
@@ -54,7 +54,7 @@ testthat::test_that("receiving policy and halo features cross jurisdiction and s
   testthat::expect_equal(
     sol_vals(sol_run(sol_prepared(f))$riparianFraction),
     0.4,
-    tolerance = 1e-10
+    tolerance = 1e-6
   )
   f$Jurisdiction <- sol_fixture()$Jurisdiction
   f$policy <- sol_policy(20)
@@ -181,7 +181,7 @@ testthat::test_that("all four classes contribute their configured widths", {
       testthat::expect_equal(
         sol_vals(sol_run(sol_prepared(f))$riparianFraction),
         expected,
-        tolerance = 1e-8
+        tolerance = 1e-6
       )
     }
   }

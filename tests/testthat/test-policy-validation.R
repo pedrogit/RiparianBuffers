@@ -2,7 +2,7 @@ testthat::test_that("policy names, all province mappings and fallback are explic
   j <- do.call(rbind, rep(list(sol_rect()), 8))
   j$NAME_En <- c(
     "Ontario",
-    "Québec",
+    "Qu\u00e9bec",
     "New Brunswick",
     "Nova Scotia",
     "Prince Edward Island",

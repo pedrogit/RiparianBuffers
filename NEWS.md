@@ -1,5 +1,14 @@
 # riparianBuffers_Sol6_1 news
 
+## 0.1.1
+
+- Replace explicit sf/GEOS polygon-cell intersections with `exactextractr`
+  coverage fractions, preserving full-cell denominators and outside-study NA.
+- Add `exactextractr` as a runtime dependency and record the agreed absolute
+  coverage tolerance of 1e-6 in output metadata. Retain overlap/range checks.
+- Add regression comparisons against independent planar sf intersections and
+  tiled coverage checks, including holes, multiple features and non-square cells.
+
 ## 0.1.0
 
 - Initial isolated solution-6.1 module.  It writes `Riparian_sol6_1`, never

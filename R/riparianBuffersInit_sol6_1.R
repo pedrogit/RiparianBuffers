@@ -85,7 +85,8 @@ riparianBuffersInit_sol6_1 <- function(sim) {
     result,
     list(
       policy = prepared$policy,
-      method = "Exact projected polygon-cell area intersection, grid-aligned sequential tiles",
+      method = "exactextractr projected polygon-cell coverage, grid-aligned sequential tiles",
+      coverageTolerance_sol6_1 = 1e-6,
       coverageConvention = paste(
         "Union of mapped lake interiors and destination-policy buffers,",
         "clipped to studyArea, divided by FULL planning-cell area including water; outside cells NA.",

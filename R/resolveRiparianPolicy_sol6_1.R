@@ -62,7 +62,7 @@ resolveRiparianPolicy_sol6_1 <- function(policy, Jurisdiction) {
   mapping <- c(
     "Ontario" = "ON",
     "Quebec" = "QC",
-    "Québec" = "QC",
+    "Qu\u00e9bec" = "QC",
     "New Brunswick" = "NB",
     "Nova Scotia" = "NS",
     "Prince Edward Island" = "PE",
