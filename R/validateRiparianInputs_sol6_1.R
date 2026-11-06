@@ -197,6 +197,65 @@ validatePlanningGrid_sol6_1 <- function(grid, area) {
   invisible(TRUE)
 }
 
+nonLakeLandArea_sol6_1 <- function(studyArea, lakes, tileSize = 128000) {
+  # Returns area(studyArea minus lakes) in m2. It exists because dissolving all
+  # lakes in one region-wide union is very slow (about 46 min for ~440k lakes),
+  # while the same area can be obtained exactly from many small local unions.
+  # The result is identical for any tileSize because the tiles partition the
+  # study area, so their areas add without double counting.
+  #
+  # Geometric (planar) area in the projected CRS, matching the validation below.
+  area <- function(x) {
+    if (is.null(x) || !nrow(x)) 0 else sum(terra::expanse(x, transform = FALSE))
+  }
+  # Dissolve study features so a point shared by two features is counted once.
+  study <- terra::aggregate(studyArea)
+  # With no lakes, all study-area land is non-lake land; no tiling is needed.
+  if (!nrow(lakes)) {
+    return(area(study))
+  }
+  # Build tile edge coordinates from the study extent, stepping by tileSize.
+  e <- as.vector(terra::ext(study))
+  xs <- seq(e[1], e[2], by = tileSize)
+  ys <- seq(e[3], e[4], by = tileSize)
+  # seq() stops at the last full step; append the extent edge so the final
+  # partial column/row of tiles still covers the whole study area.
+  if (tail(xs, 1) < e[2]) xs <- c(xs, e[2])
+  if (tail(ys, 1) < e[4]) ys <- c(ys, e[4])
+  total <- 0
+  for (i in seq_len(length(xs) - 1L)) {
+    for (j in seq_len(length(ys) - 1L)) {
+      # One rectangular tile in the study-area CRS.
+      tile <- terra::as.polygons(
+        terra::ext(xs[i], xs[i + 1L], ys[j], ys[j + 1L]),
+        crs = terra::crs(study)
+      )
+      # Skip tiles outside the study area; intersect() warns on empty results,
+      # and irregular study areas leave many bounding-box tiles empty.
+      if (!any(as.vector(terra::relate(study, tile, "intersects")))) {
+        next
+      }
+      # Study-area piece inside this tile; tiles partition the study area.
+      piece <- terra::intersect(study, tile)
+      if (!nrow(piece)) {
+        next
+      }
+      # Only lakes touching the piece can change its non-lake area, so the
+      # dissolve below sees a small subset instead of every lake in the region.
+      near <- lakes[which(as.vector(terra::relate(lakes, piece, "intersects"))), ]
+      # Dissolving the nearby lakes before erasing removes double counting where
+      # lakes overlap; the erase also clips lakes that extend past the tile.
+      total <- total +
+        if (nrow(near)) {
+          area(terra::erase(piece, terra::aggregate(near)))
+        } else {
+          area(piece)
+        }
+    }
+  }
+  total
+}
+
 validateJurisdictionCoverage_sol6_1 <- function(
   Jurisdiction,
   studyArea,
@@ -208,23 +267,21 @@ validateJurisdictionCoverage_sol6_1 <- function(
   area <- function(x) {
     if (is.null(x) || !nrow(x)) 0 else sum(terra::expanse(x, transform = FALSE))
   }
-  # Dissolve study polygons, then remove lake surfaces: only non-lake land
-  # needs a jurisdiction for terrestrial riparian-policy assignment.
-  land <- terra::aggregate(studyArea)
-  if (nrow(lakes)) {
-    land <- terra::erase(land, terra::aggregate(lakes))
-  }
+  # Dissolve study polygons once; reused by the overlap and gap checks. Lakes
+  # are no longer erased from the study area here (see the gap step below).
+  study <- terra::aggregate(studyArea)
   if (!nrow(Jurisdiction)) {
     # An empty jurisdiction layer is acceptable only when no non-lake land
-    # remains, such as a study area wholly occupied by lakes.
-    if (area(land) > areaTolerance) {
+    # remains, such as a study area wholly occupied by lakes. The tiled helper
+    # gives the non-lake land area without a region-wide lake dissolve.
+    if (nonLakeLandArea_sol6_1(studyArea, lakes) > areaTolerance) {
       stop("Jurisdiction has no polygons covering study-area non-lake land.")
     }
     return(invisible(TRUE))
   }
   # Intersect with the study area before detecting overlaps, since overlaps
   # outside the area cannot affect the current analysis.
-  clipped <- terra::intersect(Jurisdiction, terra::aggregate(studyArea))
+  clipped <- terra::intersect(Jurisdiction, study)
   if (nrow(clipped)) {
     # Dissolving can only reduce summed area; a positive reduction identifies overlap.
     overlap <- area(clipped) - area(terra::aggregate(clipped))
@@ -236,19 +293,37 @@ validateJurisdictionCoverage_sol6_1 <- function(
       )
     }
   }
-  # Erase the dissolved jurisdiction coverage from non-lake land to identify
-  # unassigned territory, allowing only absolute/relative round-off tolerance.
-  gap <- if (nrow(land)) {
-    terra::erase(land, terra::aggregate(Jurisdiction))
-  } else {
-    land
+  # Unassigned non-lake land is (study minus jurisdictions) minus lakes. Set
+  # difference is order-independent, so removing jurisdictions first gives the
+  # same region as the former (study minus lakes) minus jurisdictions, but only
+  # this small remainder ever has to meet the lake layer.
+  uncovered <- terra::erase(study, terra::aggregate(Jurisdiction))
+  gap <- uncovered
+  if (nrow(uncovered) && nrow(lakes)) {
+    # Lakes not touching the uncovered remainder cannot reduce it, so only
+    # touching lakes are dissolved and erased. Lakes lying wholly inside
+    # jurisdictions are irrelevant here by construction.
+    near <- lakes[
+      which(as.vector(terra::relate(lakes, uncovered, "intersects"))),
+    ]
+    if (nrow(near)) {
+      gap <- terra::erase(uncovered, terra::aggregate(near))
+    }
   }
-  if (area(gap) > max(areaTolerance, area(land) * 1e-10)) {
-    stop(
-      "Jurisdiction polygons leave ",
-      signif(area(gap), 8),
-      " m2 of non-lake study-area land uncovered; supply complete polygon boundaries."
-    )
+  gapArea <- area(gap)
+  # The failure threshold is max(areaTolerance, 1e-10 * land area), so it is
+  # never below areaTolerance. The land area is therefore needed only when the
+  # gap exceeds that floor, which avoids the tiled computation in the common
+  # fully covered case.
+  if (gapArea > areaTolerance) {
+    landArea <- nonLakeLandArea_sol6_1(studyArea, lakes)
+    if (gapArea > max(areaTolerance, landArea * 1e-10)) {
+      stop(
+        "Jurisdiction polygons leave ",
+        signif(gapArea, 8),
+        " m2 of non-lake study-area land uncovered; supply complete polygon boundaries."
+      )
+    }
   }
   invisible(TRUE)
 }

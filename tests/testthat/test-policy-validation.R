@@ -145,3 +145,34 @@ testthat::test_that("CRS, grid geometry, repair and jurisdiction coverage are ch
   testthat::expect_equal(terra::is.valid(repaired$vector), TRUE)
   testthat::expect_identical(sol_signature(bow), before)
 })
+
+testthat::test_that("non-lake land area is tile-independent and handles overlapping lakes", {
+  study <- sol_rect(0, 100)
+  # Two overlapping lakes: summed areas would double-count the overlap.
+  lakes <- rbind(sol_rect(10, 50, 10, 50), sol_rect(30, 70, 30, 70))
+  expected <- 100 * 100 - (40 * 40 + 40 * 40 - 20 * 20)
+  for (tile in c(7, 25, 100, 1000)) {
+    testthat::expect_equal(
+      nonLakeLandArea_sol6_1(study, lakes, tileSize = tile),
+      expected,
+      tolerance = 1e-9
+    )
+  }
+  testthat::expect_equal(nonLakeLandArea_sol6_1(study, lakes[FALSE, ]), 1e4)
+  testthat::expect_equal(nonLakeLandArea_sol6_1(study, study), 0, tolerance = 1e-9)
+})
+
+testthat::test_that("coverage gap is computed only against lakes that touch it", {
+  study <- sol_rect(0, 100)
+  jur <- sol_rect(0, 60)
+  # A lake fills the entire uncovered strip, so no uncovered land remains.
+  testthat::expect_identical(
+    validateJurisdictionCoverage_sol6_1(jur, study, sol_rect(60, 100)),
+    TRUE
+  )
+  # A distant lake must not hide the uncovered strip.
+  sol_error(
+    validateJurisdictionCoverage_sol6_1(jur, study, sol_rect(0, 20)),
+    "uncovered"
+  )
+})
