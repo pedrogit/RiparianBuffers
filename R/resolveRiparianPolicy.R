@@ -1,4 +1,4 @@
-resolveRiparianPolicy_sol6_1 <- function(policy, Jurisdiction) {
+resolveRiparianPolicy <- function(policy, Jurisdiction) {
   # Require one jurisdiction key and a width in metres for each hydrological class.
   fields <- c("small_stream", "large_stream", "small_lake", "large_lake")
   required <- c("jurisdiction", fields)

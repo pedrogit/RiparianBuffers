@@ -29,7 +29,7 @@ defineModule(
     # Processing controls affect tile size and export, not jurisdiction policy widths.
     parameters = bindrows(
       defineParameter(
-        "tileCells_sol6_1",
+        "tileCells",
         "numeric",
         128L,
         1,
@@ -37,7 +37,7 @@ defineModule(
         "Positive integer number of planning cells on each tile side."
       ),
       defineParameter(
-        "exportVectorBuffer_sol6_1",
+        "exportVectorBuffer",
         "logical",
         TRUE,
         NA,
@@ -112,7 +112,7 @@ defineModule(
 doEvent.riparianBuffers_Sol6_1 <- function(sim, eventTime, eventType) {
   # Run once during initialization; no recurring events are scheduled.
   if (identical(eventType, "init")) {
-    sim <- riparianBuffersInit_sol6_1(sim)
+    sim <- riparianBuffersInit(sim)
   } else {
     # Reject unexpected event names rather than silently producing no result.
     stop("Undefined event type in riparianBuffers_Sol6_1: ", eventType)
@@ -131,8 +131,8 @@ doEvent.riparianBuffers_Sol6_1 <- function(sim, eventTime, eventType) {
       !SpaDES.core::suppliedElsewhere("PlanningGrid", sim)
   ) {
     # Build the standalone grid only after validating polygon geometry and metre units.
-    area <- validateVector_sol6_1(sim$studyArea, "studyArea", "polygons")$vector
-    validateMetreCRS_sol6_1(area, "studyArea")
+    area <- validateVector(sim$studyArea, "studyArea", "polygons")$vector
+    validateMetreCRS(area, "studyArea")
     e <- terra::ext(area)
     # Round up the extent so the 240 m fallback does not omit boundary strips.
     sim$PlanningGrid <- terra::rast(

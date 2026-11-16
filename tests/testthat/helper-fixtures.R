@@ -1,14 +1,14 @@
 sol_module <- getOption(
-  "riparian.sol6_1.moduleDir",
-  Sys.getenv("RIPARIAN_SOL6_1_MODULE_DIR")
+  "riparian.moduleDir",
+  Sys.getenv("RIPARIAN_MODULE_DIR")
 )
 sol_scratch <- getOption(
-  "riparian.sol6_1.scratchDir",
-  Sys.getenv("RIPARIAN_SOL6_1_SCRATCH_DIR")
+  "riparian.scratchDir",
+  Sys.getenv("RIPARIAN_SCRATCH_DIR")
 )
 if (!nzchar(sol_module) || !dir.exists(sol_module) || !nzchar(sol_scratch)) {
   stop(
-    "Set riparian.sol6_1.moduleDir and riparian.sol6_1.scratchDir options (or RIPARIAN_SOL6_1_MODULE_DIR/RIPARIAN_SOL6_1_SCRATCH_DIR)."
+    "Set riparian.moduleDir and riparian.scratchDir options (or RIPARIAN_MODULE_DIR/RIPARIAN_SCRATCH_DIR)."
   )
 }
 dir.create(sol_scratch, recursive = TRUE, showWarnings = FALSE)
@@ -18,7 +18,7 @@ withr::local_options(
 )
 testthat::local_mocked_bindings(
   download.file = function(...) {
-    stop("Network downloads are forbidden in offline sol6_1 tests.")
+    stop("Network downloads are forbidden in offline tests.")
   },
   .package = "utils",
   .env = environment()
@@ -83,7 +83,7 @@ sol_fixture <- function(width = 20, lake = FALSE) {
 }
 sol_prepared <- function(f = sol_fixture(), ...) {
   do.call(
-    prepareRiparianInputs_sol6_1,
+    prepareRiparianInputs,
     c(f, list(cacheDir = sol_dir("cache"), moduleDir = sol_module), list(...))
   )
 }
@@ -94,7 +94,7 @@ sol_run <- function(
   output = sol_dir("output")
 ) {
   do.call(
-    fractionalCoverage_sol6_1,
+    fractionalCoverage,
     c(
       f[c(
         "studyArea",

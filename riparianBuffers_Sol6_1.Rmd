@@ -48,7 +48,7 @@ not a perfect curve, geodesic area, or a completeness claim about hydrology.
 Cell coverage is calculated with `exactextractr`, avoiding explicit GEOS
 intersections for every cell. Runtime packages are `SpaDES.core`, `terra`, `sf`,
 and `exactextractr`. The absolute numerical acceptance tolerance is 1e-6 in
-coverage fraction (1 m² per 1000 m cell), recorded as `coverageTolerance_sol6_1`.
+coverage fraction (1 m² per 1000 m cell), recorded as `coverageTolerance`.
 
 # Inputs and outputs
 
@@ -65,8 +65,8 @@ has no original-module `raster_m` field.
 
 # Vector export
 
-`exportVectorBuffer_sol6_1 = TRUE` by default writes the final unioned
-lake-and-buffer numerator as `riparian_buffers_sol6_1.shp` next to the GeoTIFF.
+`exportVectorBuffer = TRUE` by default writes the final unioned
+lake-and-buffer numerator as `riparian_buffers.shp` next to the GeoTIFF.
 `FALSE` writes the identical raster but no vector file. A Shapefile requires
 its `.shp`, `.shx`, `.dbf`, and `.prj` sidecars; its short `tile_id` field marks
 tile-core pieces. Tile seams can remain in the vector layer, are not ecological
@@ -83,7 +83,7 @@ sim <- SpaDES.core::simInit(
                  Hydrology_streams = Hydrology_streams,
                  Hydrology_lakes = Hydrology_lakes),
   params = list(riparianBuffers_Sol6_1 = list(
-    tileCells_sol6_1 = 128L, exportVectorBuffer_sol6_1 = TRUE)))
+    tileCells = 128L, exportVectorBuffer = TRUE)))
 sim <- SpaDES.core::spades(sim)
 fraction <- sim$Riparian_sol6_1$riparianFraction
 ```

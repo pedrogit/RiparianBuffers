@@ -24,18 +24,18 @@ testthat::test_that("exactextractr agrees with sf for curves, holes and non-squa
   holed <- terra::erase(sol_rect(15, 285, 10, 290), sol_rect(65, 135, 85, 165))
   for (shape in list(curved, holed, rbind(sol_rect(5, 65, 10, 90), sol_rect(205, 365, 160, 280)))) {
     reference <- sol_sf_reference(grid, shape)
-    result <- exactTileFractions_sol6_1(grid, shape)
+    result <- exactTileFractions(grid, shape)
     testthat::expect_lte(max(abs(result - reference)), 1e-6)
     # Coverage must not depend on raster values or NA values.
     terra::values(grid) <- NA_real_
-    testthat::expect_identical(exactTileFractions_sol6_1(grid, shape), result)
+    testthat::expect_identical(exactTileFractions(grid, shape), result)
     tiled <- numeric(terra::ncell(grid))
     for (row in c(1L, 4L)) for (col in c(1L, 3L)) {
       subgrid <- terra::rast(xmin = (col - 1) * 100, xmax = (col + 1) * 100,
                              ymin = 300 - (row + 2) * 50, ymax = 300 - (row - 1) * 50,
                              nrows = 3, ncols = 2, crs = terra::crs(grid))
       ids <- terra::cellFromXY(grid, terra::xyFromCell(subgrid, seq_len(terra::ncell(subgrid))))
-      tiled[ids] <- exactTileFractions_sol6_1(subgrid, shape)
+      tiled[ids] <- exactTileFractions(subgrid, shape)
     }
     testthat::expect_lte(max(abs(tiled - result)), 1e-6)
   }
@@ -45,8 +45,8 @@ testthat::test_that("disjoint features in one cell are summed, overlap is not co
   grid <- terra::rast(xmin = 0, xmax = 100, ymin = 0, ymax = 100,
                       nrows = 1, ncols = 1, crs = "EPSG:5070")
   pieces <- rbind(sol_rect(0, 20), sol_rect(80, 100))
-  testthat::expect_lte(abs(exactTileFractions_sol6_1(grid, pieces) - 0.4), 1e-6)
-  testthat::expect_error(exactTileFractions_sol6_1(grid, rbind(sol_rect(), sol_rect())), "outside")
+  testthat::expect_lte(abs(exactTileFractions(grid, pieces) - 0.4), 1e-6)
+  testthat::expect_error(exactTileFractions(grid, rbind(sol_rect(), sol_rect())), "outside")
 })
 
 testthat::test_that("precomputed tile geometry preserves footprint and empty behavior", {
@@ -54,20 +54,20 @@ testthat::test_that("precomputed tile geometry preserves footprint and empty beh
   tile <- terra::as.polygons(terra::ext(f$PlanningGrid), crs = terra::crs(f$PlanningGrid))
   args <- list(tileCore = tile, studyArea = f$studyArea, Jurisdiction = f$Jurisdiction,
                policy = f$policy, streams = f$streams, lakes = f$lakes)
-  baseline <- do.call(buildPolicyFootprints_sol6_1, args)
-  reused <- do.call(buildPolicyFootprints_sol6_1, c(args, list(
-    core = intersectPolygons_sol6_1(tile, f$studyArea), maxWidth = f$haloWidth_m)))
+  baseline <- do.call(buildPolicyFootprints, args)
+  reused <- do.call(buildPolicyFootprints, c(args, list(
+    core = intersectPolygons(tile, f$studyArea), maxWidth = f$haloWidth_m)))
   testthat::expect_identical(terra::geom(reused), terra::geom(baseline))
-  testthat::expect_null(do.call(buildPolicyFootprints_sol6_1, c(args, list(core = NULL))))
+  testthat::expect_null(do.call(buildPolicyFootprints, c(args, list(core = NULL))))
 })
 
 testthat::test_that("shared archive validation recognizes complete and incomplete sources", {
-  source <- riparianSource_sol6_1("streams")
+  source <- riparianSource("streams")
   members <- paste0("nested/HydroRIVERS_v10_na", c(".shp", ".shx", ".dbf", ".prj"))
   listing <- data.frame(Name = members, Length = 100)
-  testthat::expect_null(zipShapefileProblem_sol6_1(listing, source, "test.zip"))
-  testthat::expect_match(zipShapefileProblem_sol6_1(listing[-1, ], source, "test.zip"), "lacks expected")
-  testthat::expect_match(zipShapefileProblem_sol6_1(listing[-4, ], source, "test.zip"), "missing or empty")
+  testthat::expect_null(zipShapefileProblem(listing, source, "test.zip"))
+  testthat::expect_match(zipShapefileProblem(listing[-1, ], source, "test.zip"), "lacks expected")
+  testthat::expect_match(zipShapefileProblem(listing[-4, ], source, "test.zip"), "missing or empty")
   listing$Length[2] <- 0
-  testthat::expect_match(zipShapefileProblem_sol6_1(listing, source, "test.zip"), "missing or empty")
+  testthat::expect_match(zipShapefileProblem(listing, source, "test.zip"), "missing or empty")
 })

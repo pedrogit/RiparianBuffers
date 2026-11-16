@@ -1,4 +1,4 @@
-validateMetreCRS_sol6_1 <- function(x, label) {
+validateMetreCRS <- function(x, label) {
   # Inspect the CRS WKT because buffer widths and areas in this module are
   # interpreted in projected Cartesian metres.
   wkt <- terra::crs(x)
@@ -32,7 +32,7 @@ validateMetreCRS_sol6_1 <- function(x, label) {
   invisible(TRUE)
 }
 
-validateVector_sol6_1 <- function(x, label, type, targetCRS = NULL) {
+validateVector <- function(x, label, type, targetCRS = NULL) {
   # Accept only in-memory vector formats that terra can safely copy and inspect.
   if (!inherits(x, c("SpatVector", "sf", "sfc"))) {
     stop(label, " must be a SpatVector or sf object.")
@@ -93,7 +93,7 @@ validateVector_sol6_1 <- function(x, label, type, targetCRS = NULL) {
   list(vector = x, repaired = repaired)
 }
 
-classifyHydrology_sol6_1 <- function(x, kind) {
+classifyHydrology <- function(x, kind) {
   # Select the authoritative source attribute and the two policy classes for
   # streams (order) or lakes (area).
   stream <- identical(kind, "streams")
@@ -161,7 +161,7 @@ classifyHydrology_sol6_1 <- function(x, kind) {
   x
 }
 
-validatePlanningGrid_sol6_1 <- function(grid, area) {
+validatePlanningGrid <- function(grid, area) {
   # The output grid must be a usable single layer with finite, positive cell
   # dimensions before it can define the analysis projection and extent.
   if (
@@ -176,7 +176,7 @@ validatePlanningGrid_sol6_1 <- function(grid, area) {
     )
   }
   # Require metre units because all buffer widths are expressed in metres.
-  validateMetreCRS_sol6_1(grid, "PlanningGrid")
+  validateMetreCRS(grid, "PlanningGrid")
   # The study CRS is the specified working projection; do not silently select another.
   if (!terra::same.crs(grid, area)) {
     stop("PlanningGrid and studyArea must share their projected metre CRS.")
@@ -197,7 +197,7 @@ validatePlanningGrid_sol6_1 <- function(grid, area) {
   invisible(TRUE)
 }
 
-nonLakeLandArea_sol6_1 <- function(studyArea, lakes, tileSize = 128000) {
+nonLakeLandArea <- function(studyArea, lakes, tileSize = 128000) {
   # Returns area(studyArea minus lakes) in m2. It exists because dissolving all
   # lakes in one region-wide union is very slow (about 46 min for ~440k lakes),
   # while the same area can be obtained exactly from many small local unions.
@@ -256,7 +256,7 @@ nonLakeLandArea_sol6_1 <- function(studyArea, lakes, tileSize = 128000) {
   total
 }
 
-validateJurisdictionCoverage_sol6_1 <- function(
+validateJurisdictionCoverage <- function(
   Jurisdiction,
   studyArea,
   lakes,
@@ -274,7 +274,7 @@ validateJurisdictionCoverage_sol6_1 <- function(
     # An empty jurisdiction layer is acceptable only when no non-lake land
     # remains, such as a study area wholly occupied by lakes. The tiled helper
     # gives the non-lake land area without a region-wide lake dissolve.
-    if (nonLakeLandArea_sol6_1(studyArea, lakes) > areaTolerance) {
+    if (nonLakeLandArea(studyArea, lakes) > areaTolerance) {
       stop("Jurisdiction has no polygons covering study-area non-lake land.")
     }
     return(invisible(TRUE))
@@ -316,7 +316,7 @@ validateJurisdictionCoverage_sol6_1 <- function(
   # gap exceeds that floor, which avoids the tiled computation in the common
   # fully covered case.
   if (gapArea > areaTolerance) {
-    landArea <- nonLakeLandArea_sol6_1(studyArea, lakes)
+    landArea <- nonLakeLandArea(studyArea, lakes)
     if (gapArea > max(areaTolerance, landArea * 1e-10)) {
       stop(
         "Jurisdiction polygons leave ",

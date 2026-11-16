@@ -1,8 +1,8 @@
 # Offline synthetic demonstration for riparianBuffers_Sol6_1.
 # It supplies every spatial input, so it never downloads data. Call explicitly:
-# demo_riparianBuffers_sol6_1("path/you/control/scratch")
+# demo_riparianBuffers_Sol6_1("path/you/control/scratch")
 
-demo_riparianBuffers_sol6_1 <- function(
+demo_riparianBuffers_Sol6_1 <- function(
   scratch_path,
   project_root = getwd(),
   export_vector = TRUE
@@ -31,10 +31,10 @@ demo_riparianBuffers_sol6_1 <- function(
   root <- normalizePath(scratch_path, winslash = "/", mustWork = FALSE)
   paths <- list(
     modulePath = file.path(project_root, "modules"),
-    inputPath = file.path(root, "inputs_sol6_1"),
-    outputPath = file.path(root, "outputs_sol6_1"),
-    cachePath = file.path(root, "cache_sol6_1"),
-    scratchPath = file.path(root, "scratch_sol6_1")
+    inputPath = file.path(root, "inputs"),
+    outputPath = file.path(root, "outputs"),
+    cachePath = file.path(root, "cache"),
+    scratchPath = file.path(root, "scratch")
   )
   if (!dir.exists(paths$modulePath)) {
     stop("Cannot find modules under project_root: ", project_root)
@@ -133,8 +133,8 @@ demo_riparianBuffers_sol6_1 <- function(
     ),
     params = list(
       riparianBuffers_Sol6_1 = list(
-        tileCells_sol6_1 = 2L,
-        exportVectorBuffer_sol6_1 = export_vector
+        tileCells = 2L,
+        exportVectorBuffer = export_vector
       )
     )
   )

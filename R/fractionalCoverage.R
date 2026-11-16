@@ -1,6 +1,6 @@
 # Exact means polygon/cell intersections in the grid CRS; full-cell area is the
 # denominator, even where studyArea occupies only part of a planning cell.
-exactTileFractions_sol6_1 <- function(template, footprint) {
+exactTileFractions <- function(template, footprint) {
   # Allocate one coverage value per template cell; zero is the natural value
   # for cells with no footprint intersection.
   answer <- numeric(terra::ncell(template))
@@ -52,7 +52,7 @@ exactTileFractions_sol6_1 <- function(template, footprint) {
   pmin(1, pmax(0, answer))
 }
 
-checkShapefileSize_sol6_1 <- function(filename, additionalBytes = 0) {
+checkShapefileSize <- function(filename, additionalBytes = 0) {
   # Check the three Shapefile components that can independently hit size limits.
   stem <- tools::file_path_sans_ext(filename)
   paths <- paste0(stem, c(".shp", ".shx", ".dbf"))
@@ -75,7 +75,7 @@ checkShapefileSize_sol6_1 <- function(filename, additionalBytes = 0) {
 #' terra 1.9.27 cannot append to an existing Shapefile
 #' with writeVector(insert=TRUE); sf's GDAL append also supports empty polygons.
 #' Output geometry comprises disjoint tile cores; seams are processing artifacts.
-fractionalCoverage_sol6_1 <- function(
+fractionalCoverage <- function(
   studyArea,
   PlanningGrid,
   Jurisdiction,
@@ -146,8 +146,8 @@ fractionalCoverage_sol6_1 <- function(
       stop("Cannot create directory: ", path)
     }
   }
-  rasterName <- "riparian_fraction_sol6_1.tif"
-  vectorName <- "riparian_buffers_sol6_1.shp"
+  rasterName <- "riparian_fraction.tif"
+  vectorName <- "riparian_buffers.shp"
   # Name the final deliverables once so overwrite protection and publication agree.
   targets <- c(
     file.path(outputDir, rasterName),
@@ -167,7 +167,7 @@ fractionalCoverage_sol6_1 <- function(
     )
   }
   # Build complete files in scratch space, so the output directory is published atomically.
-  stage <- tempfile(pattern = "riparian_sol6_1_stage_", tmpdir = scratchDir)
+  stage <- tempfile(pattern = "riparian_stage_", tmpdir = scratchDir)
   if (!dir.create(stage)) {
     stop("Cannot create staging directory: ", stage)
   }
@@ -190,7 +190,7 @@ fractionalCoverage_sol6_1 <- function(
       } else {
         # Preserve failed staging output for diagnosis instead of silently deleting it.
         warning(
-          "Incomplete riparian_sol6_1 export retained at: ",
+          "Incomplete riparian export retained at: ",
           stage,
           call. = FALSE
         )
@@ -240,10 +240,10 @@ fractionalCoverage_sol6_1 <- function(
       )
       # Convert the tile rectangle to a polygon for destination and footprint clipping.
       core <- terra::as.polygons(ex, crs = terra::crs(template))
-      studyCore <- intersectPolygons_sol6_1(core, studyArea)
+      studyCore <- intersectPolygons(core, studyArea)
       if (!is.null(studyCore)) {
         # Build destination-policy buffers only where this tile intersects the study area.
-        footprint <- buildPolicyFootprints_sol6_1(
+        footprint <- buildPolicyFootprints(
           core,
           studyArea,
           Jurisdiction,
@@ -253,11 +253,11 @@ fractionalCoverage_sol6_1 <- function(
           core = studyCore,
           maxWidth = maxWidth
         )
-        fractions <- exactTileFractions_sol6_1(template, footprint)
+        fractions <- exactTileFractions(template, footprint)
         # Mark cells outside the study area as NoData, even if a buffer reaches them.
-        inStudy <- exactTileFractions_sol6_1(
+        inStudy <- exactTileFractions(
           template,
-          unionPolygons_sol6_1(list(studyCore))
+          unionPolygons(list(studyCore))
         ) >
           0
         fractions[!inStudy] <- NA_real_
@@ -266,7 +266,7 @@ fractionalCoverage_sol6_1 <- function(
         if (exportVector && !is.null(footprint)) {
           # Estimate before writing, then check actual component sizes afterward.
           coordinates <- terra::geom(footprint)
-          checkShapefileSize_sol6_1(
+          checkShapefileSize(
             stagedVector,
             additionalBytes = nrow(coordinates) * 32 + nrow(footprint) * 1024
           )
@@ -280,10 +280,10 @@ fractionalCoverage_sol6_1 <- function(
             layer_options = c("SHPT=POLYGON", "2GB_LIMIT=YES")
           )
           vectorStarted <- TRUE
-          checkShapefileSize_sol6_1(stagedVector)
+          checkShapefileSize(stagedVector)
         }
       }
-      message("riparian_sol6_1 tile ", tileId, "/", totalTiles)
+      message("riparian tile ", tileId, "/", totalTiles)
     }
     # Write this completed stripe in raster cell order, then release it next iteration.
     terra::writeValues(writer, as.vector(t(stripe)), start = row, nrows = nrows)
@@ -314,7 +314,7 @@ fractionalCoverage_sol6_1 <- function(
     if (!all(file.exists(required))) {
       stop("Incomplete staged Shapefile sidecars.")
     }
-    checkShapefileSize_sol6_1(stagedVector)
+    checkShapefileSize(stagedVector)
     # Querying schema/extent via GDAL avoids reading a continental vector back.
     info <- sf::st_layers(stagedVector)
     if (!length(info$name)) stop("Staged Shapefile is not readable.")

@@ -107,7 +107,7 @@ testthat::test_that("partial study cells, non-square cells and tiled append agre
   testthat::expect_gte(length(unique(shape$tile_id)), 2L)
   testthat::expect_equal(
     sol_vals(tiled$riparianFraction)[!is.na(sol_vals(tiled$riparianFraction))],
-    exactTileFractions_sol6_1(f$PlanningGrid, shape)[
+    exactTileFractions(f$PlanningGrid, shape)[
       !is.na(sol_vals(tiled$riparianFraction))
     ],
     tolerance = 1e-9
@@ -205,7 +205,7 @@ testthat::test_that("empty exports are readable and existing outputs are protect
   sidecar <- sol_dir("sidecar")
   writeLines(
     "protected",
-    file.path(sidecar, "riparian_fraction_sol6_1.tif.aux.xml")
+    file.path(sidecar, "riparian_fraction.tif.aux.xml")
   )
   sol_error(sol_run(p, output = sidecar), "overwrite")
   for (bad in list(NA, 1, "TRUE", logical(), c(TRUE, FALSE))) {
@@ -215,7 +215,7 @@ testthat::test_that("empty exports are readable and existing outputs are protect
     sol_error(sol_run(p, tile = bad), "positive integer")
   }
   sol_error(
-    checkShapefileSize_sol6_1(file.path(sol_scratch, "absent.shp"), 2^31),
+    checkShapefileSize(file.path(sol_scratch, "absent.shp"), 2^31),
     "2 GiB"
   )
 })
@@ -232,16 +232,16 @@ testthat::test_that("exact API preserves cell IDs and rejects double coverage", 
   )
   terra::values(grid) <- 1
   testthat::expect_equal(
-    exactTileFractions_sol6_1(grid, sol_rect(125, 175)),
+    exactTileFractions(grid, sol_rect(125, 175)),
     c(0, 0.5)
   )
-  testthat::expect_equal(exactTileFractions_sol6_1(grid, NULL), c(0, 0))
+  testthat::expect_equal(exactTileFractions(grid, NULL), c(0, 0))
   testthat::expect_equal(
-    exactTileFractions_sol6_1(grid, sol_rect(300, 400)),
+    exactTileFractions(grid, sol_rect(300, 400)),
     c(0, 0)
   )
   sol_error(
-    exactTileFractions_sol6_1(grid, rbind(sol_rect(), sol_rect())),
+    exactTileFractions(grid, rbind(sol_rect(), sol_rect())),
     "outside"
   )
 })

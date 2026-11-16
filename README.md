@@ -43,7 +43,7 @@ Runtime packages are `SpaDES.core`, `terra`, `sf`, and `exactextractr`.
 and Shapefile append/empty-export operations. The numerical acceptance tolerance
 is an absolute coverage-fraction difference of **1e-6** (1 m² per 1000 m cell),
 used for regression comparisons, tile consistency, and roundoff range checks.
-The output records this as `coverageTolerance_sol6_1`.
+The output records this as `coverageTolerance`.
 Circular buffer edges are polygonal approximations with 30 segments per quadrant;
 exact cell coverage applies to those resulting polygons, not ideal curved arcs.
 
@@ -82,9 +82,9 @@ source CRS, geometry repairs, policy fallback diagnostics, halo provenance,
 and `lakeInteriorsExcluded = FALSE`. There is deliberately no `raster_m`
 field: this algorithm has no fine computation raster.
 
-`exportVectorBuffer_sol6_1` is a non-missing logical parameter, default
-`TRUE`. It writes `riparian_buffers_sol6_1.shp` beside
-`riparian_fraction_sol6_1.tif`. The Shapefile is the final lake-and-buffer
+`exportVectorBuffer` is a non-missing logical parameter, default
+`TRUE`. It writes `riparian_buffers.shp` beside
+`riparian_fraction.tif`. The Shapefile is the final lake-and-buffer
 numerator footprint, in the output CRS, not raw hydrology, a raster polygon,
 or a land-only habitat boundary. Its short `tile_id` field identifies
 non-overlapping tile-core pieces. Neighbouring pieces may visibly meet at tile
@@ -127,6 +127,6 @@ These are single-run timings, not a reliable full-area estimate. Real-data repai
 and vector geometry operations remain expensive. Start with a representative
 subset; a full Angela-area run has not been performed.
 
-`tileCells_sol6_1` defaults to 128 cells per tile side. Larger tiles can require
+`tileCells` defaults to 128 cells per tile side. Larger tiles can require
 more memory and more complex geometry operations. No parallel processing or
 additional buffer optimization is enabled.

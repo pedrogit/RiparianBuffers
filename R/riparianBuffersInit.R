@@ -1,4 +1,4 @@
-riparianBuffersInit_sol6_1 <- function(sim) {
+riparianBuffersInit <- function(sim) {
   # Require spatial context before preparing any optional data or writing outputs.
   required <- c("studyArea", "PlanningGrid")
   for (name in required) {
@@ -29,8 +29,8 @@ riparianBuffersInit_sol6_1 <- function(sim) {
   }
   # Read only this module's processing controls, not the original module's parameters.
   params <- SpaDES.core::P(sim, module = "riparianBuffers_Sol6_1")
-  tile <- params$tileCells_sol6_1
-  export <- params$exportVectorBuffer_sol6_1
+  tile <- params$tileCells
+  export <- params$exportVectorBuffer
   # Reject invalid tile sizes before coercion to integer or allocation of raster stripes.
   if (
     !is.numeric(tile) ||
@@ -41,26 +41,26 @@ riparianBuffersInit_sol6_1 <- function(sim) {
       tile != floor(tile) ||
       tile > .Machine$integer.max
   ) {
-    stop("tileCells_sol6_1 must be one finite positive integer.")
+    stop("tileCells must be one finite positive integer.")
   }
   # Export is optional, but the decision must be one explicit TRUE or FALSE.
   if (!is.logical(export) || length(export) != 1L || is.na(export)) {
-    stop("exportVectorBuffer_sol6_1 must be one non-missing logical value.")
+    stop("exportVectorBuffer must be one non-missing logical value.")
   }
   # Isolate all writable products from the original module's files and caches.
   paths <- SpaDES.core::paths(sim)
   input <- SpaDES.core::inputPath(sim)
-  output <- file.path(SpaDES.core::outputPath(sim), "riparianBuffers_sol6_1")
+  output <- file.path(SpaDES.core::outputPath(sim), "riparianBuffers_Sol6_1")
   scratchRoot <- paths[["scratchPath"]]
   # Provide a module-specific staging location when no scratch path was configured.
   if (is.null(scratchRoot) || !length(scratchRoot) || !nzchar(scratchRoot)) {
-    scratchRoot <- file.path(output, "scratch_sol6_1")
+    scratchRoot <- file.path(output, "scratch")
   }
-  scratch <- file.path(scratchRoot, "riparianBuffers_sol6_1")
-  cache <- file.path(input, "riparianBuffers_sol6_1")
+  scratch <- file.path(scratchRoot, "riparianBuffers_Sol6_1")
+  cache <- file.path(input, "riparianBuffers_Sol6_1")
   moduleDir <- file.path(SpaDES.core::modulePath(sim), "riparianBuffers_Sol6_1")
   # Validate supplied inputs, obtain missing sources, and select whole halo features.
-  prepared <- prepareRiparianInputs_sol6_1(
+  prepared <- prepareRiparianInputs(
     studyArea = sim$studyArea,
     PlanningGrid = sim$PlanningGrid,
     Jurisdiction = sim$Jurisdiction,
@@ -75,7 +75,7 @@ riparianBuffersInit_sol6_1 <- function(sim) {
   dir.create(output, recursive = TRUE, showWarnings = FALSE)
   dir.create(scratch, recursive = TRUE, showWarnings = FALSE)
   # Construct and union destination-policy footprints, then calculate tiled cell coverage.
-  result <- fractionalCoverage_sol6_1(
+  result <- fractionalCoverage(
     studyArea = prepared$studyArea,
     PlanningGrid = prepared$PlanningGrid,
     Jurisdiction = prepared$Jurisdiction,
@@ -98,7 +98,7 @@ riparianBuffersInit_sol6_1 <- function(sim) {
     list(
       policy = prepared$policy,
       method = "exactextractr projected polygon-cell coverage, grid-aligned sequential tiles",
-      coverageTolerance_sol6_1 = 1e-6,
+      coverageTolerance = 1e-6,
       coverageConvention = paste(
         "Union of mapped lake interiors and destination-policy buffers,",
         "clipped to studyArea, divided by FULL planning-cell area including water; outside cells NA.",
@@ -115,8 +115,8 @@ riparianBuffersInit_sol6_1 <- function(sim) {
       haloExtent = prepared$haloExtent,
       policyAssumption = prepared$policySource,
       projectionConvention = "Areas and widths are planar in the study-area CRS; projection distortion is not corrected",
-      tileCells_sol6_1 = as.integer(tile),
-      exportVectorBuffer_sol6_1 = export
+      tileCells = as.integer(tile),
+      exportVectorBuffer = export
     )
   )
   # Return the updated simulation without printing its potentially large contents.

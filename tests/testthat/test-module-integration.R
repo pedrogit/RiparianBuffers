@@ -40,10 +40,10 @@ sol_sim <- function(modules, modulePath, objects, export = FALSE) {
   root <- sol_dir("simulation")
   paths <- list(
     modulePath = modulePath,
-    inputPath = file.path(root, "input_sol6_1"),
-    outputPath = file.path(root, "output_sol6_1"),
-    cachePath = file.path(root, "cache_sol6_1"),
-    scratchPath = file.path(root, "scratch_sol6_1")
+    inputPath = file.path(root, "input"),
+    outputPath = file.path(root, "output"),
+    cachePath = file.path(root, "cache"),
+    scratchPath = file.path(root, "scratch")
   )
   for (p in paths) {
     dir.create(p, recursive = TRUE, showWarnings = FALSE)
@@ -57,7 +57,7 @@ sol_sim <- function(modules, modulePath, objects, export = FALSE) {
   params <- list()
   if ("riparianBuffers_Sol6_1" %in% modules) {
     params$riparianBuffers_Sol6_1 <-
-      list(tileCells_sol6_1 = 1L, exportVectorBuffer_sol6_1 = export)
+      list(tileCells = 1L, exportVectorBuffer = export)
   }
   if ("RiparianBuffers" %in% modules) {
     params$RiparianBuffers <- list(hydroRaster_m = 20)
@@ -92,7 +92,7 @@ testthat::test_that("actual simInit/spades produces isolated result and default 
     modules = "riparianBuffers_Sol6_1",
     objects = objects,
     paths = paths,
-    params = list(riparianBuffers_Sol6_1 = list(tileCells_sol6_1 = 1L))
+    params = list(riparianBuffers_Sol6_1 = list(tileCells = 1L))
   )
   sim <- SpaDES.core::spades(sim, debug = FALSE)
   r <- sim$Riparian_sol6_1
@@ -102,7 +102,7 @@ testthat::test_that("actual simInit/spades produces isolated result and default 
     c(TRUE, TRUE)
   )
   testthat::expect_identical(r$lakeInteriorsExcluded, FALSE)
-  testthat::expect_identical(r$exportVectorBuffer_sol6_1, TRUE)
+  testthat::expect_identical(r$exportVectorBuffer, TRUE)
   testthat::expect_null(r$raster_m)
   testthat::expect_null(sim$Riparian)
   testthat::expect_match(r$coverageConvention, "FULL planning-cell")
@@ -131,7 +131,7 @@ testthat::test_that("actual simInit/spades produces isolated result and default 
     TRUE
   )
   deps <- SpaDES.core::inputObjects(sim)[["riparianBuffers_Sol6_1"]]
-  testthat::expect_equal(any(grepl("_sol6_1$", deps$objectName)), FALSE)
+  testthat::expect_equal(any(grepl("$", deps$objectName)), FALSE)
 })
 
 testthat::test_that("standalone default grid is 240 m and supplied 1000 m grid wins", {
@@ -220,7 +220,7 @@ testthat::test_that("old/new coexist in both orders and each matches its standal
     testthat::expect_equal(joint$Riparian$policy, objects$riparianBufferPolicy)
     testthat::expect_match(
       joint$Riparian_sol6_1$rasterFile,
-      "riparianBuffers_sol6_1"
+      "riparianBuffers_Sol6_1"
     )
     testthat::expect_null(joint$Riparian_sol6_1$vectorBufferFile)
   }

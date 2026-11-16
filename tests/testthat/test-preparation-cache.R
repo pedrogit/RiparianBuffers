@@ -3,7 +3,7 @@ testthat::test_that("four missing/supplied hydrology combinations prepare only m
   rawDir <- sol_dir("raw")
   raw <- list()
   for (dataset in c("streams", "lakes", "jurisdiction")) {
-    source <- riparianSource_sol6_1(dataset)
+    source <- riparianSource(dataset)
     x <- switch(
       dataset,
       streams = f$streams,
@@ -76,7 +76,7 @@ testthat::test_that("offline downloader writes validated source and reuses manif
   testthat::expect_equal(nzchar(Sys.which("zip")), TRUE)
   f <- sol_fixture(20, lake = TRUE)
   for (dataset in c("streams", "lakes")) {
-    source <- riparianSource_sol6_1(dataset)
+    source <- riparianSource(dataset)
     rawDir <- sol_dir("archive_input")
     path <- file.path(rawDir, source$shape)
     terra::writeVector(if (dataset == "streams") f$streams else f$lakes, path)
@@ -93,7 +93,7 @@ testthat::test_that("offline downloader writes validated source and reuses manif
       0L
     }
     cache <- sol_dir("source_cache")
-    first <- obtainRiparianSource_sol6_1(
+    first <- obtainRiparianSource(
       dataset,
       cache,
       download = fakeDownload
@@ -101,7 +101,7 @@ testthat::test_that("offline downloader writes validated source and reuses manif
     testthat::expect_identical(requests, source$url)
     testthat::expect_identical(first$reused, FALSE)
     testthat::expect_equal(file.exists(first$path), TRUE)
-    second <- obtainRiparianSource_sol6_1(
+    second <- obtainRiparianSource(
       dataset,
       cache,
       download = function(...) stop("NETWORK")
@@ -112,7 +112,7 @@ testthat::test_that("offline downloader writes validated source and reuses manif
       normalizePath(first$path, winslash = "/")
     )
     originalHash <- tools::md5sum(archive)
-    reused <- obtainRiparianSource_sol6_1(
+    reused <- obtainRiparianSource(
       dataset,
       sol_dir("reuse_cache"),
       reuseDir = dirname(archive),
@@ -122,17 +122,17 @@ testthat::test_that("offline downloader writes validated source and reuses manif
     testthat::expect_identical(tools::md5sum(archive), originalHash)
     manifest <- readRDS(file.path(
       cache,
-      paste0(dataset, "_sol6_1"),
-      "complete_source_sol6_1.rds"
+      dataset,
+      "complete_source.rds"
     ))
     testthat::expect_identical(manifest$rawUncropped, TRUE)
     testthat::expect_equal(manifest$url, source$url)
     manifest$url <- "wrong provenance"
     saveRDS(
       manifest,
-      file.path(cache, paste0(dataset, "_sol6_1"), "complete_source_sol6_1.rds")
+      file.path(cache, dataset, "complete_source.rds")
     )
-    refreshed <- obtainRiparianSource_sol6_1(
+    refreshed <- obtainRiparianSource(
       dataset,
       cache,
       download = function(...) stop("NETWORK")
@@ -141,14 +141,14 @@ testthat::test_that("offline downloader writes validated source and reuses manif
     testthat::expect_equal(
       readRDS(file.path(
         cache,
-        paste0(dataset, "_sol6_1"),
-        "complete_source_sol6_1.rds"
+        dataset,
+        "complete_source.rds"
       ))$url,
       source$url
     )
     # A cached raw layer preserves feature endpoints outside studyArea.
     halo <- sol_rect(-20, 120, -20, 120)
-    selected <- readRiparianHalo_sol6_1(
+    selected <- readRiparianHalo(
       second,
       halo,
       terra::crs(f$studyArea)
@@ -161,7 +161,7 @@ testthat::test_that("offline downloader writes validated source and reuses manif
 })
 
 testthat::test_that("download failures and damaged cache report URL and local location", {
-  source <- riparianSource_sol6_1("streams")
+  source <- riparianSource("streams")
   for (download in list(
     function(...) stop("offline fixture"),
     function(...) 1L,
@@ -172,18 +172,18 @@ testthat::test_that("download failures and damaged cache report URL and local lo
   )) {
     cache <- sol_dir("failed_download")
     error <- suppressWarnings(sol_error(
-      obtainRiparianSource_sol6_1("streams", cache, download = download),
+      obtainRiparianSource("streams", cache, download = download),
       "Input preparation failed"
     ))
     testthat::expect_match(conditionMessage(error), source$url, fixed = TRUE)
     testthat::expect_match(conditionMessage(error), cache, fixed = TRUE)
   }
   cache <- sol_dir("corrupt_cache")
-  localDir <- file.path(cache, "streams_sol6_1")
+  localDir <- file.path(cache, "streams")
   dir.create(localDir)
   writeLines("corrupt", file.path(localDir, source$archive))
   suppressWarnings(sol_error(
-    obtainRiparianSource_sol6_1("streams", cache, download = function(...) {
+    obtainRiparianSource("streams", cache, download = function(...) {
       stop("NETWORK")
     }),
     "incomplete/corrupt"
@@ -191,23 +191,23 @@ testthat::test_that("download failures and damaged cache report URL and local lo
   incomplete <- file.path(sol_dir("incomplete"), source$shape)
   writeLines("fixture", incomplete)
   sol_error(
-    validateShapefile_sol6_1(incomplete, source),
+    validateShapefile(incomplete, source),
     "Incomplete shapefile"
   )
   wrong <- file.path(sol_dir("wrong_schema"), source$shape)
   terra::writeVector(sol_line()[, 0], wrong)
-  sol_error(validateShapefile_sol6_1(wrong, source), "missing CRS or ORD_STRA")
+  sol_error(validateShapefile(wrong, source), "missing CRS or ORD_STRA")
 })
 
 testthat::test_that("downloaded ZIP missing components is not published as complete cache", {
-  source <- riparianSource_sol6_1("streams")
+  source <- riparianSource("streams")
   raw <- sol_dir("incomplete_zip")
   writeLines("fixture", file.path(raw, source$shape))
   archive <- file.path(sol_dir("zip"), source$archive)
   utils::zip(archive, list.files(raw, full.names = TRUE), flags = "-j -q")
   cache <- sol_dir("incomplete_zip_cache")
   sol_error(
-    obtainRiparianSource_sol6_1(
+    obtainRiparianSource(
       "streams",
       cache,
       download = function(url, destfile, ...) {
@@ -218,14 +218,14 @@ testthat::test_that("downloaded ZIP missing components is not published as compl
     "missing or empty shapefile components"
   )
   testthat::expect_equal(
-    file.exists(file.path(cache, "streams_sol6_1", source$archive)),
+    file.exists(file.path(cache, "streams", source$archive)),
     FALSE
   )
   testthat::expect_equal(
     file.exists(file.path(
       cache,
-      "streams_sol6_1",
-      "complete_source_sol6_1.rds"
+      "streams",
+      "complete_source.rds"
     )),
     FALSE
   )
