@@ -89,32 +89,12 @@ defineModule(
         "Optional halo-complete lakes with Lake_area (km2) or validated hydro_class; global HydroLAKES when missing."
       )
     ),
-    # Publish only suffixed outputs so both riparian implementations can coexist.
+    # Publish one suffixed output so both riparian implementations can coexist.
     outputObjects = bindrows(
       createsOutput(
         "Riparian_sol6_1",
         "list",
         "riparianFraction: combined lake-and-buffer coverage/full cell area; lakeInteriorsExcluded=FALSE; lake-water overlaps counted once. Includes policy and provenance; never replaces Riparian."
-      ),
-      createsOutput(
-        "Jurisdiction_sol6_1",
-        "SpatVector",
-        "Prepared projected destination polygons with jurisdiction_code; common input unchanged."
-      ),
-      createsOutput(
-        "riparianBufferPolicy_sol6_1",
-        "data.frame",
-        "Validated module-local policy in metres."
-      ),
-      createsOutput(
-        "Hydrology_streams_sol6_1",
-        "SpatVector",
-        "Projected halo-selected original streams with validated hydro_class."
-      ),
-      createsOutput(
-        "Hydrology_lakes_sol6_1",
-        "SpatVector",
-        "Projected halo-selected full lake polygons including interiors, with validated hydro_class."
       )
     )
   )

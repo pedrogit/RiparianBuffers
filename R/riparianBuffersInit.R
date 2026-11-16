@@ -99,11 +99,7 @@ riparianBuffersInit <- function(sim) {
     tileCells = as.integer(tile),
     exportVector = export
   )
-  # Publish prepared copies under suffixed names; common input objects stay unchanged.
-  sim$Jurisdiction_sol6_1 <- prepared$Jurisdiction
-  sim$riparianBufferPolicy_sol6_1 <- prepared$policy
-  sim$Hydrology_streams_sol6_1 <- prepared$streams
-  sim$Hydrology_lakes_sol6_1 <- prepared$lakes
+  # Prepared copies of the inputs stay local; common input objects are unchanged.
   # Attach scientific conventions and provenance to the raster and export paths.
   sim$Riparian_sol6_1 <- c(
     result,

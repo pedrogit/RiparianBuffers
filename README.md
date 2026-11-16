@@ -104,8 +104,9 @@ validated read-only inputs and one common `PlanningGrid`. Do not let both
 modules independently make grids. The original module retains its existing
 algorithm and output `Riparian`; downstream Landbase continues to select that
 output unless separate, explicit integration selects `Riparian_sol6_1`.
-Fallback hydrology prepared by this module stays suffixed/module-local and is
-not published as the original module's shared hydrology output.
+Fallback hydrology and other prepared inputs stay module-local. The module
+publishes only `Riparian_sol6_1`; it never writes the original module's shared
+`Hydrology_streams` or `Hydrology_lakes`.
 
 See `scripts/demo_riparianBuffers_Sol6_1.R` for an offline synthetic run and
 `EasternCanadaForAngela/run_riparianBuffers_Sol6_1.R` for opt-in Angela setup.

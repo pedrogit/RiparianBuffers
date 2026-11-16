@@ -118,17 +118,12 @@ testthat::test_that("actual simInit/spades produces isolated result and default 
   for (name in names(objects)) {
     testthat::expect_identical(sol_signature(sim[[name]]), before[[name]])
   }
-  testthat::expect_equal(
-    all(
-      c(
-        "Jurisdiction_sol6_1",
-        "riparianBufferPolicy_sol6_1",
-        "Hydrology_streams_sol6_1",
-        "Hydrology_lakes_sol6_1"
-      ) %in%
-        names(sim)
-    ),
-    TRUE
+  # The only suffixed object this module adds is Riparian_sol6_1. Prepared
+  # copies of the inputs stay local and are not published under any name.
+  testthat::expect_true("Riparian_sol6_1" %in% names(sim))
+  testthat::expect_identical(
+    sort(grep("_sol6_1$", names(sim), value = TRUE)),
+    "Riparian_sol6_1"
   )
   deps <- SpaDES.core::inputObjects(sim)[["riparianBuffers_Sol6_1"]]
   testthat::expect_equal(any(grepl("$", deps$objectName)), FALSE)
