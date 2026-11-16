@@ -37,6 +37,17 @@ defineModule(
         "Positive integer number of planning cells on each tile side."
       ),
       defineParameter(
+        "fringeMaxArea_km2",
+        "numeric",
+        50,
+        0,
+        NA,
+        paste(
+          "Uncovered non-lake land pieces smaller than this area (km2) receive the policy",
+          "of their neighbouring jurisdiction; larger pieces stop the run. 0 disables."
+        )
+      ),
+      defineParameter(
         "exportVectorBuffer",
         "logical",
         TRUE,

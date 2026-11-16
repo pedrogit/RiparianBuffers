@@ -47,6 +47,17 @@ riparianBuffersInit <- function(sim) {
   if (!is.logical(export) || length(export) != 1L || is.na(export)) {
     stop("exportVectorBuffer must be one non-missing logical value.")
   }
+  # Zero disables fringe assignment and keeps the strict coverage check.
+  fringeMax <- params$fringeMaxArea_km2
+  if (
+    !is.numeric(fringeMax) ||
+      length(fringeMax) != 1L ||
+      is.na(fringeMax) ||
+      !is.finite(fringeMax) ||
+      fringeMax < 0
+  ) {
+    stop("fringeMaxArea_km2 must be one finite nonnegative number.")
+  }
   # Isolate all writable products from the original module's files and caches.
   paths <- SpaDES.core::paths(sim)
   input <- SpaDES.core::inputPath(sim)
@@ -69,7 +80,8 @@ riparianBuffersInit <- function(sim) {
     lakes = sim$Hydrology_lakes,
     cacheDir = cache,
     moduleDir = moduleDir,
-    reuseDir = input
+    reuseDir = input,
+    fringeMaxArea_km2 = fringeMax
   )
   # Create destination directories only after the input contract has been checked.
   dir.create(output, recursive = TRUE, showWarnings = FALSE)
@@ -109,6 +121,8 @@ riparianBuffersInit <- function(sim) {
       streamConvention = "Stream centrelines do not define explicit river water-surface polygons",
       sourceCRS = prepared$sourceCRS,
       policyFallback = prepared$policyFallback,
+      fringeAssigned = prepared$fringeAssigned,
+      fringeMaxArea_km2 = fringeMax,
       geometryRepairs = prepared$repairs,
       sources = prepared$sources,
       haloWidth_m = prepared$haloWidth_m,

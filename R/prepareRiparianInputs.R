@@ -285,7 +285,8 @@ prepareRiparianInputs <- function(
   cacheDir,
   moduleDir,
   reuseDir = NULL,
-  obtainSource = obtainRiparianSource
+  obtainSource = obtainRiparianSource,
+  fringeMaxArea_km2 = 0
 ) {
   # Capture original CRS declarations for diagnostics before inputs are copied,
   # repaired, or projected to the PlanningGrid working CRS.
@@ -399,6 +400,26 @@ prepareRiparianInputs <- function(
   # Prepare both feature types needed to generate stream and lake buffers.
   s <- prepare(streams, "streams", "lines")
   l <- prepare(lakes, "lakes", "polygons")
+  # Small uncovered fringes (shoreline or boundary mismatch) receive their
+  # neighbour's policy; larger pieces are left for the strict check to reject.
+  assigned <- assignFringeToNeighbour(
+    resolved$Jurisdiction,
+    area,
+    l,
+    maxArea_km2 = fringeMaxArea_km2
+  )
+  resolved$Jurisdiction <- assigned$Jurisdiction
+  if (!is.null(assigned$fringe)) {
+    message(
+      "Assigned ",
+      sum(assigned$fringe$pieces),
+      " uncovered non-lake fringe piece(s) (",
+      signif(sum(assigned$fringe$area_km2), 5),
+      " km2, largest ",
+      signif(max(assigned$fringe$largest_km2), 4),
+      " km2) to their neighbouring jurisdiction."
+    )
+  }
   # Require non-lake land to have one non-overlapping policy jurisdiction.
   validateJurisdictionCoverage(resolved$Jurisdiction, area, l)
   # Return validated inputs plus auditable policy, CRS, repair, and source data.
@@ -415,6 +436,7 @@ prepareRiparianInputs <- function(
     sources = provenance,
     haloWidth_m = haloWidth,
     haloExtent = as.vector(terra::ext(halo)),
-    policySource = policySource
+    policySource = policySource,
+    fringeAssigned = assigned$fringe
   )
 }

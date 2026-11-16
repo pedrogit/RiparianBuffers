@@ -176,3 +176,100 @@ testthat::test_that("coverage gap is computed only against lakes that touch it",
     "uncovered"
   )
 })
+
+testthat::test_that("small uncovered fringes take the neighbour policy; large ones stop", {
+  study <- sol_rect(0, 100)
+  jur <- sol_rect(0, 60)
+  jur$jurisdiction_code <- "ON"
+  noLakes <- sol_rect(0, 1)[FALSE, ]
+  # The 40 x 100 m strip is 0.004 km2: under the limit it joins its neighbour.
+  out <- assignFringeToNeighbour(jur, study, noLakes, maxArea_km2 = 0.01)
+  testthat::expect_equal(out$fringe$pieces, 1L)
+  testthat::expect_equal(out$fringe$area_km2, 0.004, tolerance = 1e-9)
+  testthat::expect_identical(out$fringe$jurisdiction_code, "ON")
+  testthat::expect_equal(
+    sum(terra::expanse(out$Jurisdiction, transform = FALSE)),
+    1e4,
+    tolerance = 1e-9
+  )
+  testthat::expect_identical(
+    validateJurisdictionCoverage(out$Jurisdiction, study, noLakes),
+    TRUE
+  )
+  # At or above the limit the piece is a genuine hole.
+  sol_error(
+    assignFringeToNeighbour(jur, study, noLakes, maxArea_km2 = 0.004),
+    "uncovered non-lake land piece"
+  )
+  # Zero disables the step and leaves inputs unchanged.
+  off <- assignFringeToNeighbour(jur, study, noLakes, maxArea_km2 = 0)
+  testthat::expect_null(off$fringe)
+  testthat::expect_equal(nrow(off$Jurisdiction), 1L)
+})
+
+testthat::test_that("fringe goes to the longest shared border or the nearest jurisdiction", {
+  study <- sol_rect(0, 100)
+  noLakes <- sol_rect(0, 1)[FALSE, ]
+  # Two jurisdictions flank a gap; QC shares the longer edge with the 0-100 y gap.
+  on <- sol_rect(0, 40, 0, 100); on$jurisdiction_code <- "ON"
+  qc <- sol_rect(60, 100, 0, 100); qc$jurisdiction_code <- "QC"
+  jur <- rbind(on, qc)
+  # Gap strip x 40-60: equal borders, so a tie falls to one of the two.
+  out <- assignFringeToNeighbour(jur, study, noLakes, maxArea_km2 = 1)
+  testthat::expect_true(out$fringe$jurisdiction_code %in% c("ON", "QC"))
+  # Asymmetric borders: QC touches only part of the gap's edge.
+  qc2 <- sol_rect(60, 100, 0, 30); qc2$jurisdiction_code <- "QC"
+  on2 <- sol_rect(0, 60, 0, 100); on2$jurisdiction_code <- "ON"
+  gapStudy <- sol_rect(0, 100, 0, 100)
+  out2 <- assignFringeToNeighbour(rbind(on2, qc2), gapStudy, noLakes, maxArea_km2 = 1)
+  # The region x 60-100, y 30-100 touches ON along 70 m and QC along 40 m.
+  testthat::expect_identical(out2$fringe$jurisdiction_code, "ON")
+  # A piece separated from every jurisdiction goes to the nearest one.
+  far <- sol_rect(0, 10, 0, 100); far$jurisdiction_code <- "ON"
+  out3 <- assignFringeToNeighbour(far, sol_rect(0, 12, 0, 100), noLakes, maxArea_km2 = 1)
+  testthat::expect_identical(out3$fringe$jurisdiction_code, "ON")
+})
+
+testthat::test_that("tiled neighbour assignment is tile-independent and reports timing", {
+  on <- sol_rect(0, 40, 0, 100); on$jurisdiction_code <- "ON"
+  qc <- sol_rect(60, 100, 0, 100); qc$jurisdiction_code <- "QC"
+  jur <- rbind(on, qc)
+  # Four pieces: two near ON, one near QC, one touching neither within 1 m.
+  pieces <- rbind(
+    sol_rect(40, 42, 10, 20), sol_rect(38, 40, 60, 70),
+    sol_rect(58, 60, 30, 40), sol_rect(50, 52, 80, 90)
+  )
+  one <- assignPiecesToJurisdiction(pieces, jur, tileSize = 1000)
+  small <- assignPiecesToJurisdiction(pieces, jur, tileSize = 15)
+  testthat::expect_identical(one$row, small$row)
+  testthat::expect_equal(one$row[1:3], c(1L, 1L, 2L))
+  testthat::expect_true(all(c("component", "seconds", "peak_rss_MB") %in% names(one$timing)))
+  # A piece straddling both neighbours goes to the one sharing the longer border.
+  both <- sol_rect(40, 60, 0, 100)
+  out <- assignPiecesToJurisdiction(both, jur)
+  testthat::expect_true(out$row %in% 1:2)
+})
+
+testthat::test_that("uncovered non-lake land splits into pieces and removes only touching lakes", {
+  study <- sol_rect(0, 100)
+  # Two separate uncovered strips: x 0-10 and x 90-100.
+  jur <- sol_rect(10, 90)
+  # One lake straddles the left strip's edge; a distant lake lies inside the jurisdiction.
+  lakes <- rbind(sol_rect(0, 20, 40, 60), sol_rect(40, 60, 40, 60))
+  gap <- uncoveredNonLakeLand(jur, study, lakes)
+  # Left strip 10 x 100 minus the 10 x 20 lake overlap, plus the full right strip.
+  testthat::expect_equal(
+    sum(terra::expanse(gap, transform = FALSE)),
+    (10 * 100 - 10 * 20) + 10 * 100,
+    tolerance = 1e-9
+  )
+  # With no lakes the remainder is returned unchanged in area.
+  testthat::expect_equal(
+    sum(terra::expanse(uncoveredNonLakeLand(jur, study, lakes[FALSE, ]), transform = FALSE)),
+    2000,
+    tolerance = 1e-9
+  )
+  # A lake covering one whole strip removes it; a full cover leaves nothing.
+  full <- uncoveredNonLakeLand(jur, study, rbind(sol_rect(0, 10), sol_rect(90, 100)))
+  testthat::expect_equal(sum(terra::expanse(full, transform = FALSE)), 0, tolerance = 1e-9)
+})
