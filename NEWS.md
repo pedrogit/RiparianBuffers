@@ -1,5 +1,37 @@
 # riparianBuffers_Sol6_1 news
 
+## Unreleased
+
+- **Small uncovered fringes take a neighbouring jurisdiction's policy.** New
+  parameter `fringeMaxArea_km2` (default 50; 0 restores the strict check). Each
+  piece of uncovered non-lake land smaller than the limit is assigned to the
+  jurisdiction sharing the longest border with it, or to the nearest one if it
+  touches none. Any piece at or above the limit still stops the run. The count,
+  area and largest piece are reported in a message and in
+  `Riparian_sol6_1$fringeAssigned`. On the full Eastern Canada study area this
+  assigned 136,649 pieces (1,817.6 km2, largest 47.4 km2), which previously made
+  the coverage check stop.
+- The neighbour search is tiled (128 km tiles, vertex vote, exact shared-border
+  length for pieces touching several jurisdictions) because an untiled search
+  ran out of memory on the full area.
+- `uncoveredNonLakeLand` now splits the uncovered area into pieces and queries
+  the lakes with the pieces, so a spatial index is used. Testing every lake
+  against one multipart polygon took about 22 hours on the full area; the helper
+  now takes about 9 minutes and gives identical areas on the Ontario-Quebec
+  test.
+- **Breaking: names internal to the module no longer carry `_sol6_1`.**
+  Parameters are now `tileCells`, `exportVectorBuffer` and `fringeMaxArea_km2`.
+  Output files are `riparian_fraction.tif` and `riparian_buffers.shp`. Helper
+  functions, R/ file names, options (`riparian.moduleDir`), environment
+  variables (`RIPARIAN_MODULE_DIR`) and cache and scratch names were renamed the
+  same way. Existing source caches under the old names are not reused. Scripts
+  that pass the old parameter names must be updated.
+- **Breaking: only `Riparian_sol6_1` is published.** `Jurisdiction_sol6_1`,
+  `riparianBufferPolicy_sol6_1`, `Hydrology_streams_sol6_1` and
+  `Hydrology_lakes_sol6_1` are no longer created. No module in this repository
+  used them, and they kept every prepared stream and lake in the `simList`
+  after `init`. Prepared data stay local; common inputs are never modified.
+
 ## 0.1.1
 
 - Reuse tile-study intersections and the validated maximum policy width, remove
