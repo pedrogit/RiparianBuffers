@@ -52,28 +52,13 @@ exactTileFractions <- function(template, footprint) {
   pmin(1, pmax(0, answer))
 }
 
-checkShapefileSize <- function(filename, additionalBytes = 0) {
-  # Check the three Shapefile components that can independently hit size limits.
-  stem <- tools::file_path_sans_ext(filename)
-  paths <- paste0(stem, c(".shp", ".shx", ".dbf"))
-  sizes <- file.info(paths)$size
-  sizes[is.na(sizes)] <- 0
-  # Deliberately conservative portable Shapefile limit, including a safety margin.
-  if (any(sizes + additionalBytes >= 2^31 - 1024^2)) {
-    stop(
-      "Shapefile is approaching the portable 2 GiB component limit. ",
-      "Use a smaller study area or rerun with exportVector=FALSE; ",
-      "no geometry has been silently truncated."
-    )
-  }
-  invisible(TRUE)
-}
-
 #' Tiled exact combined lake-and-riparian coverage, with staged publication
 #'
 #' Planar cell coverage requires exactextractr; sf provides vector export because
-#' terra 1.9.27 cannot append to an existing Shapefile
-#' with writeVector(insert=TRUE); sf's GDAL append also supports empty polygons.
+#' terra 1.9.27 cannot append to an existing file with writeVector(insert=TRUE),
+#' while sf's GDAL append also supports empty layers. The vector is a single
+#' GeoPackage (`riparian_buffers.gpkg`, layer `riparian_buffers`), which has no
+#' practical size limit, unlike a Shapefile (2 GiB per component).
 #' Output geometry comprises disjoint tile cores; seams are processing artifacts.
 fractionalCoverage <- function(
   studyArea,
@@ -147,14 +132,15 @@ fractionalCoverage <- function(
     }
   }
   rasterName <- "riparian_fraction.tif"
-  vectorName <- "riparian_buffers.shp"
+  vectorName <- "riparian_buffers.gpkg"
+  vectorLayer <- "riparian_buffers"
   # Name the final deliverables once so overwrite protection and publication agree.
   targets <- c(
     file.path(outputDir, rasterName),
     if (exportVector) file.path(outputDir, vectorName)
   )
   existing <- list.files(outputDir, full.names = TRUE)
-  # Match base names to protect Shapefile sidecars as well as named deliverables.
+  # Match base names to protect related files as well as named deliverables.
   protected <- tools::file_path_sans_ext(basename(existing)) %in%
     tools::file_path_sans_ext(basename(targets))
   # Also protect raster sidecars such as .tif.aux.xml.
@@ -264,23 +250,17 @@ fractionalCoverage <- function(
         stripe[, seq.int(col, length.out = ncols)] <-
           matrix(fractions, nrow = nrows, ncol = ncols, byrow = TRUE)
         if (exportVector && !is.null(footprint)) {
-          # Estimate before writing, then check actual component sizes afterward.
-          coordinates <- terra::geom(footprint)
-          checkShapefileSize(
-            stagedVector,
-            additionalBytes = nrow(coordinates) * 32 + nrow(footprint) * 1024
-          )
           footprint$tile_id <- as.integer(tileId)
           # Append independent tile-core pieces; tile IDs retain their processing origin.
+          # One geometry type for the whole layer, whatever each tile produces.
           sf::st_write(
-            sf::st_as_sf(footprint),
+            sf::st_cast(sf::st_as_sf(footprint), "MULTIPOLYGON"),
             stagedVector,
+            layer = vectorLayer,
             quiet = TRUE,
-            append = vectorStarted,
-            layer_options = c("SHPT=POLYGON", "2GB_LIMIT=YES")
+            append = vectorStarted
           )
           vectorStarted <- TRUE
-          checkShapefileSize(stagedVector)
         }
       }
       message("riparian tile ", tileId, "/", totalTiles)
@@ -295,29 +275,22 @@ fractionalCoverage <- function(
       # Publish a valid empty layer when no tile produced a footprint.
       empty <- sf::st_sf(
         tile_id = integer(),
-        geometry = sf::st_sfc(sf::st_polygon(), crs = terra::crs(PlanningGrid))[
-          FALSE
-        ]
+        geometry = sf::st_sfc(
+          sf::st_multipolygon(),
+          crs = terra::crs(PlanningGrid)
+        )[FALSE]
       )
-      sf::st_write(
-        empty,
-        stagedVector,
-        quiet = TRUE,
-        layer_options = c("SHPT=POLYGON", "2GB_LIMIT=YES")
-      )
+      sf::st_write(empty, stagedVector, layer = vectorLayer, quiet = TRUE)
     }
-    required <- paste0(
-      tools::file_path_sans_ext(stagedVector),
-      c(".shp", ".shx", ".dbf", ".prj")
-    )
-    # Confirm that GDAL produced all mandatory Shapefile sidecars before publication.
-    if (!all(file.exists(required))) {
-      stop("Incomplete staged Shapefile sidecars.")
+    # Confirm that GDAL produced the file before publication.
+    if (!file.exists(stagedVector)) {
+      stop("Staged GeoPackage was not created.")
     }
-    checkShapefileSize(stagedVector)
-    # Querying schema/extent via GDAL avoids reading a continental vector back.
+    # Querying the layer list via GDAL avoids reading a continental vector back.
     info <- sf::st_layers(stagedVector)
-    if (!length(info$name)) stop("Staged Shapefile is not readable.")
+    if (!(vectorLayer %in% info$name)) {
+      stop("Staged GeoPackage is not readable.")
+    }
   }
   staged <- list.files(stage, full.names = TRUE)
   # Map every staged raster/vector sidecar into the requested output directory.

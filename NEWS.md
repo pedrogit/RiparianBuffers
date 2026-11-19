@@ -8,6 +8,12 @@
   hydrology is cut to the users' extent grown by twice the width before
   buffering. Footprints match the previous code to about 1e-4 m2.
 - Header comments added to every function.
+- **Breaking: the vector export is now a GeoPackage.** `riparian_buffers.gpkg`
+  (layer `riparian_buffers`) replaces `riparian_buffers.shp`. A Shapefile stops
+  at 2 GiB per component, which the full Eastern Canada area could exceed; a
+  GeoPackage has no practical limit. `checkShapefileSize` is removed, so the
+  export no longer stops at a size limit. `vectorBufferFile` now points to the
+  `.gpkg`. Earlier NEWS entries below still refer to the Shapefile.
 - **Small uncovered fringes take a neighbouring jurisdiction's policy.** New
   parameter `fringeMaxArea_km2` (default 50; 0 restores the strict check). Each
   piece of uncovered non-lake land smaller than the limit is assigned to the

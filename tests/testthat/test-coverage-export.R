@@ -115,15 +115,11 @@ testthat::test_that("partial study cells, non-square cells and tiled append agre
   summed <- sum(terra::expanse(shape, transform = FALSE))
   dissolved <- sum(terra::expanse(terra::aggregate(shape), transform = FALSE))
   testthat::expect_equal(summed, dissolved, tolerance = 1e-9)
-  testthat::expect_equal(
-    file.exists(paste0(
-      tools::file_path_sans_ext(tiled$vectorBufferFile),
-      c(".shp", ".shx", ".dbf", ".prj")
-    )),
-    rep(TRUE, 4)
-  )
+  testthat::expect_match(basename(tiled$vectorBufferFile), "[.]gpkg$")
+  testthat::expect_true(file.exists(tiled$vectorBufferFile))
+  testthat::expect_identical(sf::st_layers(tiled$vectorBufferFile)$name, "riparian_buffers")
   testthat::expect_null(whole$vectorBufferFile)
-  testthat::expect_length(list.files(dirname(whole$rasterFile), "\\.shp$"), 0)
+  testthat::expect_length(list.files(dirname(whole$rasterFile), "\\.gpkg$"), 0)
 })
 
 testthat::test_that("fully lake-covered non-square cells and partial study cells use full denominator", {
@@ -214,10 +210,6 @@ testthat::test_that("empty exports are readable and existing outputs are protect
   for (bad in list(0, -1, 1.5, Inf, NA_real_, c(1, 2), "2")) {
     sol_error(sol_run(p, tile = bad), "positive integer")
   }
-  sol_error(
-    checkShapefileSize(file.path(sol_scratch, "absent.shp"), 2^31),
-    "2 GiB"
-  )
 })
 
 testthat::test_that("exact API preserves cell IDs and rejects double coverage", {

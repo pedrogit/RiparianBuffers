@@ -66,12 +66,12 @@ has no original-module `raster_m` field.
 # Vector export
 
 `exportVectorBuffer = TRUE` by default writes the final unioned
-lake-and-buffer numerator as `riparian_buffers.shp` next to the GeoTIFF.
-`FALSE` writes the identical raster but no vector file. A Shapefile requires
-its `.shp`, `.shx`, `.dbf`, and `.prj` sidecars; its short `tile_id` field marks
-tile-core pieces. Tile seams can remain in the vector layer, are not ecological
-boundaries, and do not duplicate coverage. Export stops before portable
-Shapefile component-size limits rather than truncating geometry.
+lake-and-buffer numerator as `riparian_buffers.gpkg` next to the GeoTIFF.
+`FALSE` writes the identical raster but no vector file. The GeoPackage is a
+single file with one layer, `riparian_buffers`, and has no practical size limit
+(a Shapefile would stop at 2 GiB). Its short `tile_id` field marks tile-core
+pieces. Tile seams can remain in the vector layer, are not ecological
+boundaries, and do not duplicate coverage.
 
 # Minimal supplied-input run
 

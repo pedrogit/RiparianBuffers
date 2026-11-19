@@ -53,7 +53,7 @@ defineModule(
         TRUE,
         NA,
         NA,
-        "Export final combined lake-and-buffer footprint as Shapefile alongside GeoTIFF."
+        "Export final combined lake-and-buffer footprint as GeoPackage alongside GeoTIFF."
       )
     ),
     # Declare shared inputs without claiming ownership of upstream data products.
