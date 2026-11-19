@@ -108,8 +108,8 @@ Several intermediate grids/copies mean greater total resource use; terra can spi
 
 ## New module decisions and implementation
 
-The user requested a new module **`riparianBuffers_Sol6_1`**, alongside and not replacing the original. The detailed plan is:
-[design-riparianbuffers-sol6-1-module.md](.posit/assistant/plans/2026-11-04-1422-design-riparianbuffers-sol6-1-module.md).
+The user requested a new module **`RiparianBuffers`**, alongside and not replacing the original. The detailed plan is:
+[design-riparianbuffers-module.md](.posit/assistant/plans/2026-11-04-1422-design-riparianbuffers-module.md).
 
 The user subsequently approved implementation **as planned**, postponing further buffer optimization.
 
@@ -127,10 +127,10 @@ The user subsequently approved implementation **as planned**, postponing further
 | Entirely outside study area | **NA** |
 | Fallback grid | **240 m** |
 | Input names | Unsuffixed common inputs; read-only |
-| New result | **`sim$Riparian_sol6_1`** |
+| New result | **`sim$Riparian`** |
 | Coexistence | Both modules in one `simList`, separate outputs/files |
-| Vector export | **`exportVectorBuffer_sol6_1 = TRUE`** by default |
-| Tile size | **`tileCells_sol6_1 = 128`** cells per side |
+| Vector export | **`exportVectorBuffer = TRUE`** by default |
+| Tile size | **`tileCells = 128`** cells per side |
 | Internal raster | None; no `raster_m` |
 | Water downloads | Independently obtain missing HydroRIVERS/HydroLAKES; validated cache first |
 | Halo | Maximum policy width; select whole features before buffering |
@@ -142,23 +142,23 @@ Lake interiors are included independently of offshore jurisdiction coverage and 
 
 ### Files implemented
 
-Under [modules/riparianBuffers_Sol6_1](modules/riparianBuffers_Sol6_1):
+Under [modules/RiparianBuffers](modules/RiparianBuffers):
 
 | File | Responsibility |
 |---|---|
-| `riparianBuffers_Sol6_1.R` | Metadata, parameters, input preparation, init dispatch |
-| `R/riparianBuffersInit_sol6_1.R` | Orchestration/provenance/output |
-| `R/prepareRiparianInputs_sol6_1.R` | Downloads, validated raw caches, whole-feature halo selection |
-| `R/validateRiparianInputs_sol6_1.R` | CRS, geometry, grid, classification, jurisdiction checks |
-| `R/resolveRiparianPolicy_sol6_1.R` | Policy validation/mapping/default diagnostics |
-| `R/buildPolicyFootprints_sol6_1.R` | Correct destination-policy geometry and lake union |
-| `R/fractionalCoverage_sol6_1.R` | Exact cell intersections, tiled writes, exports |
+| `RiparianBuffers.R` | Metadata, parameters, input preparation, init dispatch |
+| `R/riparianBuffersInit.R` | Orchestration/provenance/output |
+| `R/prepareRiparianInputs.R` | Downloads, validated raw caches, whole-feature halo selection |
+| `R/validateRiparianInputs.R` | CRS, geometry, grid, classification, jurisdiction checks |
+| `R/resolveRiparianPolicy.R` | Policy validation/mapping/default diagnostics |
+| `R/buildPolicyFootprints.R` | Correct destination-policy geometry and lake union |
+| `R/fractionalCoverage.R` | Exact cell intersections, tiled writes, exports |
 | `data/riparianBufferPolicy.csv` | Original initial widths |
 | `README.md`, `.Rmd`, `NEWS.md` | Documentation |
 | `tests/unitTests.R`, `tests/testthat/*` | Offline regression/integration tests |
-| `scripts/demo_riparianBuffers_Sol6_1.R` | Opt-in offline demo |
+| `scripts/demo_RiparianBuffers.R` | Opt-in offline demo |
 
-Also created opt-in [EasternCanadaForAngela/run_riparianBuffers_Sol6_1.R](EasternCanadaForAngela/run_riparianBuffers_Sol6_1.R).
+Also created opt-in [EasternCanadaForAngela/run_RiparianBuffers_new.R](EasternCanadaForAngela/run_RiparianBuffers_new.R).
 
 Runtime dependencies: **SpaDES.core, terra, sf**.
 
@@ -168,7 +168,7 @@ The initial terra `extract(exact=TRUE)` implementation had a tiled/untiled discr
 
 GeoTIFF uses FLT8S. Shapefile contains the exact numerator footprint, including lakes, not polygonized raster cells. Tile seams are permitted; overlaps are not double-counted. Required sidecars stay together. Outputs are staged, protected from overwrite, and checked against portable ~2 GiB Shapefile component limits. Empty projected Shapefile export is supported.
 
-Output paths are under configured output path’s `riparianBuffers_sol6_1` directory; filenames `riparian_fraction_sol6_1.tif`, `riparian_buffers_sol6_1.shp`. Result includes `rasterFile`, `vectorBufferFile` (NULL when disabled), policy/provenance/diagnostics and `lakeInteriorsExcluded = FALSE`.
+Output paths are under configured output path’s `RiparianBuffers` directory; filenames `riparian_fraction.tif`, `riparian_buffers.shp`. Result includes `rasterFile`, `vectorBufferFile` (NULL when disabled), policy/provenance/diagnostics and `lakeInteriorsExcluded = FALSE`.
 
 ### Validation completed
 
@@ -188,6 +188,6 @@ No full new-module Angela run or additional buffer optimization/parallelism was 
 
 The user asked whether costly buffering could be optimized. Suggested grouping by class/distinct widths, spatial selection, bounded buffer reuse, local unions, separating lake interiors, benchmarking, then cautious parallelism. The user explicitly chose **implement as-is; optimize later**.
 
-The last request was comparing the implemented modules. Main distinction: original approximate raster workflow with policy-footprint defects versus corrected tiled vector footprints/exact projected coverage. Both include lakes, but Sol6_1 makes that explicit and independent of offshore jurisdiction assignments. Original has smoke coverage/current debug stops; Sol6_1 has extensive tests and default vector export.
+The last request was comparing the implemented modules. Main distinction: original approximate raster workflow with policy-footprint defects versus corrected tiled vector footprints/exact projected coverage. Both include lakes, but the new module makes that explicit and independent of offshore jurisdiction assignments. Original has smoke coverage/current debug stops; the new module has extensive tests and default vector export.
 
 Potential next step suggested: compare both modules on the same small study area. The user has **not yet requested that execution**.
