@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- **Faster tile loop (about 109 to 59 min on the Eastern Canada area).** Buffers
+  are made once per class and width and shared across destinations; buffers
+  wholly inside one destination skip the exact clip (`clipToDestination`);
+  hydrology is cut to the users' extent grown by twice the width before
+  buffering. Footprints match the previous code to about 1e-4 m2.
 - **Small uncovered fringes take a neighbouring jurisdiction's policy.** New
   parameter `fringeMaxArea_km2` (default 50; 0 restores the strict check). Each
   piece of uncovered non-lake land smaller than the limit is assigned to the
