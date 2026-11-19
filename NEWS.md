@@ -14,6 +14,8 @@
   GeoPackage has no practical limit. `checkShapefileSize` is removed, so the
   export no longer stops at a size limit. `vectorBufferFile` now points to the
   `.gpkg`. Earlier NEWS entries below still refer to the Shapefile.
+- README rewritten in plain language with schematic figures (`docs/`,
+  `scripts/make_readme_figures.R`).
 - **Small uncovered fringes take a neighbouring jurisdiction's policy.** New
   parameter `fringeMaxArea_km2` (default 50; 0 restores the strict check). Each
   piece of uncovered non-lake land smaller than the limit is assigned to the
