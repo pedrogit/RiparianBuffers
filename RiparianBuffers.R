@@ -3,7 +3,7 @@
 defineModule(
   sim,
   list(
-    name = "riparianBuffers_Sol6_1",
+    name = "RiparianBuffers",
     description = paste(
       "Exact destination-jurisdiction combined lake-and-riparian-buffer coverage.",
       "Mapped lake interiors are included; the denominator is full planning-cell area.",
@@ -20,11 +20,11 @@ defineModule(
       class = "person"
     ),
     childModules = character(0),
-    version = list(riparianBuffers_Sol6_1 = "0.1.1"),
+    version = list(RiparianBuffers = "0.1.1"),
     timeframe = as.POSIXlt(c(NA, NA)),
     timeunit = "year",
     citation = list(),
-    documentation = list("README.md", "riparianBuffers_Sol6_1.Rmd", "NEWS.md"),
+    documentation = list("README.md", "RiparianBuffers.Rmd", "NEWS.md"),
     reqdPkgs = list("SpaDES.core", "terra", "sf", "exactextractr"),
     # Processing controls affect tile size and export, not jurisdiction policy widths.
     parameters = bindrows(
@@ -92,7 +92,7 @@ defineModule(
     # Publish one suffixed output so both riparian implementations can coexist.
     outputObjects = bindrows(
       createsOutput(
-        "Riparian_sol6_1",
+        "Riparian",
         "list",
         "riparianFraction: combined lake-and-buffer coverage/full cell area; lakeInteriorsExcluded=FALSE; lake-water overlaps counted once. Includes policy and provenance; never replaces Riparian."
       )
@@ -100,13 +100,13 @@ defineModule(
   )
 )
 
-doEvent.riparianBuffers_Sol6_1 <- function(sim, eventTime, eventType) {
+doEvent.RiparianBuffers <- function(sim, eventTime, eventType) {
   # Run once during initialization; no recurring events are scheduled.
   if (identical(eventType, "init")) {
     sim <- riparianBuffersInit(sim)
   } else {
     # Reject unexpected event names rather than silently producing no result.
-    stop("Undefined event type in riparianBuffers_Sol6_1: ", eventType)
+    stop("Undefined event type in RiparianBuffers: ", eventType)
   }
   invisible(sim)
 }
@@ -114,7 +114,7 @@ doEvent.riparianBuffers_Sol6_1 <- function(sim, eventTime, eventType) {
 .inputObjects <- function(sim) {
   # The user or an upstream module must define the geographic scope.
   if (is.null(sim$studyArea)) {
-    stop("riparianBuffers_Sol6_1 requires studyArea.")
+    stop("RiparianBuffers requires studyArea.")
   }
   ## Do not compete with an upstream provider, including one whose init has not run.
   if (

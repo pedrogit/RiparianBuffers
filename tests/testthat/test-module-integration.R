@@ -55,8 +55,8 @@ sol_sim <- function(modules, modulePath, objects, export = FALSE) {
   )
   on.exit(options(old), add = TRUE)
   params <- list()
-  if ("riparianBuffers_Sol6_1" %in% modules) {
-    params$riparianBuffers_Sol6_1 <-
+  if ("RiparianBuffers" %in% modules) {
+    params$RiparianBuffers <-
       list(tileCells = 1L, exportVectorBuffer = export)
   }
   if ("RiparianBuffers" %in% modules) {
@@ -89,13 +89,13 @@ testthat::test_that("actual simInit/spades produces isolated result and default 
   }
   sim <- SpaDES.core::simInit(
     times = list(start = 1, end = 1),
-    modules = "riparianBuffers_Sol6_1",
+    modules = "RiparianBuffers",
     objects = objects,
     paths = paths,
-    params = list(riparianBuffers_Sol6_1 = list(tileCells = 1L))
+    params = list(RiparianBuffers = list(tileCells = 1L))
   )
   sim <- SpaDES.core::spades(sim, debug = FALSE)
-  r <- sim$Riparian_sol6_1
+  r <- sim$Riparian
   testthat::expect_s4_class(r$riparianFraction, "SpatRaster")
   testthat::expect_equal(
     file.exists(c(r$rasterFile, r$vectorBufferFile)),
@@ -104,7 +104,6 @@ testthat::test_that("actual simInit/spades produces isolated result and default 
   testthat::expect_identical(r$lakeInteriorsExcluded, FALSE)
   testthat::expect_identical(r$exportVectorBuffer, TRUE)
   testthat::expect_null(r$raster_m)
-  testthat::expect_null(sim$Riparian)
   testthat::expect_match(r$coverageConvention, "FULL planning-cell")
   testthat::expect_equal(
     terra::compareGeom(r$riparianFraction, objects$PlanningGrid),
@@ -118,21 +117,21 @@ testthat::test_that("actual simInit/spades produces isolated result and default 
   for (name in names(objects)) {
     testthat::expect_identical(sol_signature(sim[[name]]), before[[name]])
   }
-  # The only suffixed object this module adds is Riparian_sol6_1. Prepared
-  # copies of the inputs stay local and are not published under any name.
-  testthat::expect_true("Riparian_sol6_1" %in% names(sim))
-  testthat::expect_identical(
-    sort(grep("_sol6_1$", names(sim), value = TRUE)),
-    "Riparian_sol6_1"
+  # The only object this module adds is Riparian. Prepared copies of the
+  # inputs stay local and are not published under any name.
+  testthat::expect_true("Riparian" %in% names(sim))
+  testthat::expect_setequal(
+    setdiff(ls(sim), names(objects)),
+    "Riparian"
   )
-  deps <- SpaDES.core::inputObjects(sim)[["riparianBuffers_Sol6_1"]]
+  deps <- SpaDES.core::inputObjects(sim)[["RiparianBuffers"]]
   testthat::expect_equal(any(grepl("$", deps$objectName)), FALSE)
 })
 
 testthat::test_that("standalone default grid is 240 m and supplied 1000 m grid wins", {
   objects <- sol_sim_objects()
   objects$PlanningGrid <- NULL
-  sim <- sol_sim("riparianBuffers_Sol6_1", dirname(sol_module), objects)
+  sim <- sol_sim("RiparianBuffers", dirname(sol_module), objects)
   testthat::expect_equal(terra::res(sim$PlanningGrid), c(240, 240))
   testthat::expect_equal(
     unname(as.vector(terra::ext(sim$PlanningGrid))),
@@ -148,76 +147,6 @@ testthat::test_that("standalone default grid is 240 m and supplied 1000 m grid w
     ncols = 1,
     crs = "EPSG:5070"
   )
-  sim <- sol_sim("riparianBuffers_Sol6_1", dirname(sol_module), objects)
+  sim <- sol_sim("RiparianBuffers", dirname(sol_module), objects)
   testthat::expect_equal(terra::res(sim$PlanningGrid), c(1000, 1000))
-})
-
-testthat::test_that("old/new coexist in both orders and each matches its standalone baseline", {
-  oldModule <- file.path(dirname(sol_module), "riparianBuffers")
-  testthat::expect_equal(
-    file.exists(file.path(oldModule, "RiparianBuffers.R")),
-    TRUE
-  )
-  oldFiles <- c(
-    file.path(oldModule, "RiparianBuffers.R"),
-    list.files(file.path(oldModule, "R"), "\\.R$", full.names = TRUE)
-  )
-  originalHashes <- tools::md5sum(oldFiles)
-  isolated <- sol_dir("joint_modules")
-  copied <- file.path(isolated, "RiparianBuffers")
-  dir.create(copied)
-  # Copy only required source/data/documentation, never the nested .git or old tests.
-  items <- list.files(oldModule, full.names = TRUE, all.files = FALSE)
-  items <- items[basename(items) != "tests"]
-  testthat::expect_equal(all(file.copy(items, copied, recursive = TRUE)), TRUE)
-  copiedFiles <- c(
-    file.path(copied, "RiparianBuffers.R"),
-    list.files(file.path(copied, "R"), "\\.R$", full.names = TRUE)
-  )
-  for (path in copiedFiles) {
-    lines <- readLines(path, warn = FALSE)
-    writeLines(gsub("\\bbrowser\\(\\)", "invisible(NULL)", lines), path)
-  }
-  # New module is also copied so both are resolved from one modulePath.
-  newCopy <- file.path(isolated, "riparianBuffers_Sol6_1")
-  dir.create(newCopy)
-  items <- list.files(sol_module, full.names = TRUE)
-  items <- items[basename(items) != "tests"]
-  testthat::expect_equal(all(file.copy(items, newCopy, recursive = TRUE)), TRUE)
-  makeObjects <- function() sol_sim_objects()
-  oldBaseline <- sol_sim("RiparianBuffers", isolated, makeObjects())
-  newBaseline <- sol_sim("riparianBuffers_Sol6_1", isolated, makeObjects())
-  for (order in list(
-    c("RiparianBuffers", "riparianBuffers_Sol6_1"),
-    c("riparianBuffers_Sol6_1", "RiparianBuffers")
-  )) {
-    objects <- makeObjects()
-    before <- lapply(objects, sol_signature)
-    joint <- sol_sim(order, isolated, objects)
-    testthat::expect_type(joint$Riparian, "list")
-    testthat::expect_type(joint$Riparian_sol6_1, "list")
-    testthat::expect_equal(
-      sol_vals(joint$Riparian$riparianFraction),
-      sol_vals(oldBaseline$Riparian$riparianFraction),
-      tolerance = 1e-10
-    )
-    testthat::expect_equal(
-      sol_vals(joint$Riparian_sol6_1$riparianFraction),
-      sol_vals(newBaseline$Riparian_sol6_1$riparianFraction),
-      tolerance = 1e-10
-    )
-    for (name in names(objects)) {
-      testthat::expect_identical(sol_signature(joint[[name]]), before[[name]])
-    }
-    testthat::expect_identical(lapply(objects, sol_signature), before)
-    testthat::expect_equal(joint$Riparian$raster_m, 20)
-    testthat::expect_null(joint$Riparian_sol6_1$raster_m)
-    testthat::expect_equal(joint$Riparian$policy, objects$riparianBufferPolicy)
-    testthat::expect_match(
-      joint$Riparian_sol6_1$rasterFile,
-      "riparianBuffers_Sol6_1"
-    )
-    testthat::expect_null(joint$Riparian_sol6_1$vectorBufferFile)
-  }
-  testthat::expect_identical(tools::md5sum(oldFiles), originalHashes)
 })

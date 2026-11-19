@@ -1,8 +1,8 @@
-# Offline synthetic demonstration for riparianBuffers_Sol6_1.
+# Offline synthetic demonstration for RiparianBuffers.
 # It supplies every spatial input, so it never downloads data. Call explicitly:
-# demo_riparianBuffers_Sol6_1("path/you/control/scratch")
+# demo_RiparianBuffers("path/you/control/scratch")
 
-demo_riparianBuffers_Sol6_1 <- function(
+demo_RiparianBuffers <- function(
   scratch_path,
   project_root = getwd(),
   export_vector = TRUE
@@ -121,7 +121,7 @@ demo_riparianBuffers_Sol6_1 <- function(
   # Supply every input explicitly so the offline example needs no downloads.
   sim <- SpaDES.core::simInit(
     times = list(start = 1, end = 1),
-    modules = "riparianBuffers_Sol6_1",
+    modules = "RiparianBuffers",
     paths = paths,
     objects = list(
       studyArea = study_area,
@@ -132,7 +132,7 @@ demo_riparianBuffers_Sol6_1 <- function(
       Hydrology_lakes = lakes
     ),
     params = list(
-      riparianBuffers_Sol6_1 = list(
+      RiparianBuffers = list(
         tileCells = 2L,
         exportVectorBuffer = export_vector
       )
@@ -143,11 +143,11 @@ demo_riparianBuffers_Sol6_1 <- function(
   # Check that output alignment and lake-inclusion conventions survived execution.
   stopifnot(
     terra::compareGeom(
-      sim$Riparian_sol6_1$riparianFraction,
+      sim$Riparian$riparianFraction,
       grid,
       stopOnError = FALSE
     ),
-    identical(sim$Riparian_sol6_1$lakeInteriorsExcluded, FALSE)
+    identical(sim$Riparian$lakeInteriorsExcluded, FALSE)
   )
   invisible(sim)
 }

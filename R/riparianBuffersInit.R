@@ -4,7 +4,7 @@ riparianBuffersInit <- function(sim) {
   for (name in required) {
     if (is.null(sim[[name]])) {
       stop(
-        "riparianBuffers_Sol6_1 requires ",
+        "RiparianBuffers requires ",
         name,
         " before init; explicitly supply a common grid or configure one upstream provider/load order."
       )
@@ -22,13 +22,13 @@ riparianBuffersInit <- function(sim) {
       stop(
         "Promised upstream input ",
         name,
-        " is still missing at riparianBuffers_Sol6_1 init. ",
+        " is still missing at RiparianBuffers init. ",
         "Configure provider/load ordering or explicitly supply it; no competing fallback was downloaded."
       )
     }
   }
   # Read only this module's processing controls, not the original module's parameters.
-  params <- SpaDES.core::P(sim, module = "riparianBuffers_Sol6_1")
+  params <- SpaDES.core::P(sim, module = "RiparianBuffers")
   tile <- params$tileCells
   export <- params$exportVectorBuffer
   # Reject invalid tile sizes before coercion to integer or allocation of raster stripes.
@@ -61,15 +61,15 @@ riparianBuffersInit <- function(sim) {
   # Isolate all writable products from the original module's files and caches.
   paths <- SpaDES.core::paths(sim)
   input <- SpaDES.core::inputPath(sim)
-  output <- file.path(SpaDES.core::outputPath(sim), "riparianBuffers_Sol6_1")
+  output <- file.path(SpaDES.core::outputPath(sim), "RiparianBuffers")
   scratchRoot <- paths[["scratchPath"]]
   # Provide a module-specific staging location when no scratch path was configured.
   if (is.null(scratchRoot) || !length(scratchRoot) || !nzchar(scratchRoot)) {
     scratchRoot <- file.path(output, "scratch")
   }
-  scratch <- file.path(scratchRoot, "riparianBuffers_Sol6_1")
-  cache <- file.path(input, "riparianBuffers_Sol6_1")
-  moduleDir <- file.path(SpaDES.core::modulePath(sim), "riparianBuffers_Sol6_1")
+  scratch <- file.path(scratchRoot, "RiparianBuffers")
+  cache <- file.path(input, "RiparianBuffers")
+  moduleDir <- file.path(SpaDES.core::modulePath(sim), "RiparianBuffers")
   # Validate supplied inputs, obtain missing sources, and select whole halo features.
   prepared <- prepareRiparianInputs(
     studyArea = sim$studyArea,
@@ -101,7 +101,7 @@ riparianBuffersInit <- function(sim) {
   )
   # Prepared copies of the inputs stay local; common input objects are unchanged.
   # Attach scientific conventions and provenance to the raster and export paths.
-  sim$Riparian_sol6_1 <- c(
+  sim$Riparian <- c(
     result,
     list(
       policy = prepared$policy,

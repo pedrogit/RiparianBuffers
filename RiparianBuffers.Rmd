@@ -1,11 +1,11 @@
 ---
-title: "riparianBuffers_Sol6_1"
+title: "RiparianBuffers"
 output: html_document
 ---
 
 # Purpose
 
-This module creates `sim$Riparian_sol6_1$riparianFraction`, an exact projected
+This module creates `sim$Riparian$riparianFraction`, an exact projected
 vector-intersection coverage raster on the supplied `PlanningGrid`. It is a
 separate result from `sim$Riparian` and never changes the original module.
 
@@ -77,18 +77,18 @@ Shapefile component-size limits rather than truncating geometry.
 
 ```{r, eval=FALSE}
 sim <- SpaDES.core::simInit(
-  times = list(start = 1, end = 1), modules = "riparianBuffers_Sol6_1",
+  times = list(start = 1, end = 1), modules = "RiparianBuffers",
   objects = list(studyArea = studyArea, PlanningGrid = PlanningGrid,
                  Jurisdiction = Jurisdiction,
                  Hydrology_streams = Hydrology_streams,
                  Hydrology_lakes = Hydrology_lakes),
-  params = list(riparianBuffers_Sol6_1 = list(
+  params = list(RiparianBuffers = list(
     tileCells = 128L, exportVectorBuffer = TRUE)))
 sim <- SpaDES.core::spades(sim)
-fraction <- sim$Riparian_sol6_1$riparianFraction
+fraction <- sim$Riparian$riparianFraction
 ```
 
 For a joint run, explicitly supply one shared `PlanningGrid` and select either
-`Riparian$riparianFraction` or `Riparian_sol6_1$riparianFraction` downstream.
+`Riparian$riparianFraction` or `Riparian$riparianFraction` downstream.
 Landbase's existing load order and input target the original result; adopting
 the new result requires separate explicit integration work.
