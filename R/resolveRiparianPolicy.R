@@ -1,3 +1,12 @@
+#' Attach a policy key to each jurisdiction and fill in missing policies
+#'
+#' `policy` is a table with a `jurisdiction` column and four widths in metres
+#' (small/large stream, small/large lake), including one "default" row.
+#' `Jurisdiction` is a polygon vector with a recognised name or code column.
+#' Province names (for example "Ontario", "Québec") are translated to codes
+#' (ON, QC). Jurisdictions without a policy row get a copy of the default row
+#' under their own code, and are listed in `diagnostics`. Returns list(policy,
+#' Jurisdiction, diagnostics); the `Jurisdiction` copy gains `jurisdiction_code`.
 resolveRiparianPolicy <- function(policy, Jurisdiction) {
   # Require one jurisdiction key and a width in metres for each hydrological class.
   fields <- c("small_stream", "large_stream", "small_lake", "large_lake")

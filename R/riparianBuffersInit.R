@@ -1,3 +1,11 @@
+#' SpaDES `init` event: build the riparian coverage raster once
+#'
+#' Checks that `studyArea` and `PlanningGrid` exist, refuses to continue if an
+#' optional input was promised by another module but is missing, and validates
+#' the parameters `tileCells`, `exportVectorBuffer` and `fringeMaxArea_km2`.
+#' Then runs `prepareRiparianInputs` and `fractionalCoverage` and stores the
+#' raster and its provenance in `sim$Riparian`. Files go to this module's
+#' own folders so the original module's outputs are untouched.
 riparianBuffersInit <- function(sim) {
   # Require spatial context before preparing any optional data or writing outputs.
   required <- c("studyArea", "PlanningGrid")

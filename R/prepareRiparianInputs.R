@@ -1,3 +1,9 @@
+#' Describe one of the three downloadable source datasets
+#'
+#' `dataset` is "streams" (HydroRIVERS North America), "lakes" (HydroLAKES) or
+#' "jurisdiction" (North American political divisions). Returns a list with the
+#' name, download URL, archive and shapefile names, the attribute the module
+#' relies on (`field`) and the expected geometry type. Stops for any other name.
 riparianSource <- function(dataset) {
   # Map each supported dataset to its immutable distribution metadata and the
   # attribute/geometry contract expected after extraction.
@@ -31,6 +37,12 @@ riparianSource <- function(dataset) {
   )
 }
 
+#' Check that a cached shapefile is complete and matches its source contract
+#'
+#' Requires non-empty .shp, .shx, .dbf and .prj files, a declared CRS, the
+#' source's key attribute and the expected geometry type. Only the header is
+#' read, so this is cheap even for continental files. Stops on any failure;
+#' returns TRUE invisibly otherwise.
 validateShapefile <- function(path, source) {
   # A shapefile is a multi-file dataset: derive the common stem before checking
   # its mandatory geometry, index, attributes, and projection sidecars.
@@ -67,6 +79,13 @@ validateShapefile <- function(path, source) {
   invisible(TRUE)
 }
 
+#' Diagnose a ZIP archive's file listing before extracting it
+#'
+#' `contents` is the listing from `unzip(list = TRUE)`. Returns NULL when the
+#' archive holds exactly one expected main shapefile with all four non-empty
+#' components, otherwise a text message describing the problem. Returning a
+#' message (rather than stopping) lets callers skip a bad candidate archive and
+#' try another, while a fresh download can still fail loudly.
 zipShapefileProblem <- function(contents, source, archive) {
   # Return a diagnostic so reuse can skip bad archives while new downloads fail clearly.
   main <- contents$Name[basename(contents$Name) == source$shape]
@@ -81,6 +100,15 @@ zipShapefileProblem <- function(contents, source, archive) {
   NULL
 }
 
+#' Locate or download the raw (uncropped) source shapefile for a dataset
+#'
+#' Returns list(path, source, reused). In order: (1) reuse a previous extraction
+#' recorded in a `complete_source.rds` marker if its URL matches; (2) use a
+#' valid ZIP already in the cache or in `reuseDir`; (3) otherwise download to a
+#' ".partial" file, verify it, and only then rename it into place. The ZIP is
+#' checked for unsafe paths before extraction and the extracted shapefile is
+#' validated. Failures are re-raised with the source name, URL and cache folder.
+#' `download` can be replaced (for example in tests) to avoid network access.
 obtainRiparianSource <- function(
   dataset,
   cacheDir,
@@ -230,6 +258,14 @@ obtainRiparianSource <- function(
   )
 }
 
+#' Read the source features that fall inside the study-area halo
+#'
+#' `raw` is the list from `obtainRiparianSource`, `halo` a polygon in the
+#' working CRS, `targetCRS` the working projection. The halo is converted to the
+#' file's own CRS (with extra vertices and a small margin so curved projections
+#' cannot cut it short) and used as a coarse filter, so only nearby features are
+#' read from a very large file. Features are kept whole; they are then validated,
+#' repaired if needed and projected to `targetCRS`.
 readRiparianHalo <- function(raw, halo, targetCRS) {
   # OGR spatial filter selects WHOLE source features; do not crop shorelines/endpoints.
   header <- terra::vect(raw$path, proxy = TRUE)
@@ -264,6 +300,11 @@ readRiparianHalo <- function(raw, halo, targetCRS) {
   validateVector(v, raw$source$name, raw$source$type, targetCRS)
 }
 
+#' Precise halo selection in the working CRS
+#'
+#' Second, exact step after the coarse filter in `readRiparianHalo` (and also
+#' applied to user-supplied layers): keeps the whole features of `x` that
+#' intersect `halo`. An empty `x` is returned unchanged.
 selectRiparianHalo <- function(x, halo) {
   # Preserve an explicitly supplied empty vector without calling spatial
   # predicates that may not support zero features.
@@ -275,6 +316,16 @@ selectRiparianHalo <- function(x, halo) {
   x[index, ]
 }
 
+#' Validate and prepare every input the footprint builder needs
+#'
+#' The stage-2 "preparation" step. Validates the study area and planning grid,
+#' loads the policy table (bundled default when none is supplied), computes the
+#' halo from the widest buffer, then obtains or validates jurisdictions, streams
+#' and lakes (downloading only what was not supplied). It then resolves a policy
+#' for each jurisdiction, assigns small uncovered fringes to a neighbouring
+#' jurisdiction (`fringeMaxArea_km2`, 0 = strict) and checks jurisdiction
+#' coverage. Returns the prepared layers plus audit information: CRS, repairs,
+#' sources, policy fallbacks, halo and fringe summary.
 prepareRiparianInputs <- function(
   studyArea,
   PlanningGrid,

@@ -1,3 +1,8 @@
+#' Require a projected CRS measured in metres
+#'
+#' Buffer widths and areas are computed as planar distances, so geographic
+#' (degree) and foot-based CRSs are rejected rather than silently reprojected.
+#' `label` names the input in the error message. Returns TRUE invisibly.
 validateMetreCRS <- function(x, label) {
   # Inspect the CRS WKT because buffer widths and areas in this module are
   # interpreted in projected Cartesian metres.
@@ -32,6 +37,13 @@ validateMetreCRS <- function(x, label) {
   invisible(TRUE)
 }
 
+#' Validate, repair and optionally project a vector input
+#'
+#' Works on a private copy so the caller's object is never changed. Checks the
+#' class, CRS and geometry type (`type` is "polygons" or "lines"), repairs
+#' invalid geometries (reporting how many), rejects empty geometries, and
+#' projects to `targetCRS` when given. Returns list(vector, repaired), where
+#' `repaired` is the number of geometries that needed repair.
 validateVector <- function(x, label, type, targetCRS = NULL) {
   # Accept only in-memory vector formats that terra can safely copy and inspect.
   if (!inherits(x, c("SpatVector", "sf", "sfc"))) {
@@ -93,6 +105,14 @@ validateVector <- function(x, label, type, targetCRS = NULL) {
   list(vector = x, repaired = repaired)
 }
 
+#' Add the `hydro_class` column that selects the buffer width
+#'
+#' `kind` is "streams" or "lakes". Streams are classed by Strahler order
+#' (`ORD_STRA`): below 4 is "small_stream", 4 or more "large_stream". Lakes are
+#' classed by whole-lake area (`Lake_area`, km2): below 1 is "small_lake", 1 or
+#' more "large_lake". If the source attribute is absent, a complete
+#' `hydro_class` supplied by the caller is accepted instead. Stops on missing,
+#' negative or conflicting values.
 classifyHydrology <- function(x, kind) {
   # Select the authoritative source attribute and the two policy classes for
   # streams (order) or lakes (area).
@@ -161,6 +181,11 @@ classifyHydrology <- function(x, kind) {
   x
 }
 
+#' Check that the output grid is usable for this study area
+#'
+#' `grid` must be a non-empty single-layer raster with positive resolution, a
+#' metre CRS identical to `area`'s, and an extent covering the whole study area
+#' (within a tiny rounding tolerance). Stops otherwise; returns TRUE invisibly.
 validatePlanningGrid <- function(grid, area) {
   # The output grid must be a usable single layer with finite, positive cell
   # dimensions before it can define the analysis projection and extent.
@@ -197,6 +222,11 @@ validatePlanningGrid <- function(grid, area) {
   invisible(TRUE)
 }
 
+#' Area of study-area land that is not lake, in square metres
+#'
+#' Used to scale the coverage tolerance. Done tile by tile (`tileSize` metres)
+#' because dissolving all lakes at once is very slow; the tiles partition the
+#' study area, so the total is the same for any tile size.
 nonLakeLandArea <- function(studyArea, lakes, tileSize = 128000) {
   # Returns area(studyArea minus lakes) in m2. It exists because dissolving all
   # lakes in one region-wide union is very slow (about 46 min for ~440k lakes),
@@ -256,6 +286,13 @@ nonLakeLandArea <- function(studyArea, lakes, tileSize = 128000) {
   total
 }
 
+#' Non-lake land that no jurisdiction polygon covers
+#'
+#' Returns the part of `study` (already dissolved) left after removing all
+#' jurisdictions and then all lakes that touch what remains. This is the "gap"
+#' used by the coverage check and the fringe assignment. The remainder is split
+#' into connected pieces so that lake matching uses a spatial index instead of
+#' testing every lake against one multi-million-vertex polygon.
 uncoveredNonLakeLand <- function(Jurisdiction, study, lakes) {
   # Unassigned non-lake land is (study minus jurisdictions) minus lakes. Set
   # difference is order-independent, so removing jurisdictions first gives the
@@ -291,6 +328,16 @@ uncoveredNonLakeLand <- function(Jurisdiction, study, lakes) {
 }
 
 
+#' Find the neighbouring jurisdiction of each uncovered piece
+#'
+#' `pieces` are the small uncovered polygons. Returns list(row, method, timing):
+#' `row` is the index of the chosen jurisdiction feature for each piece, `method`
+#' says whether it was decided by "vote" or by "border length", and `timing`
+#' gives time and memory per step. Pieces are grouped by 128 km tile and each
+#' group is compared with a small crop of the jurisdictions (never the whole
+#' layer). Each piece vertex votes for the jurisdiction owning the nearest
+#' jurisdiction vertex; the winner has the most votes. Where several
+#' jurisdictions touch a piece, the one sharing the longest border is chosen.
 assignPiecesToJurisdiction <- function(
   pieces,
   Jurisdiction,
@@ -418,6 +465,16 @@ assignPiecesToJurisdiction <- function(
   list(row = row, method = method, timing = timing)
 }
 
+#' Give small uncovered land pieces their neighbour's policy
+#'
+#' Coastlines and boundary mismatches leave many tiny pieces of land that no
+#' jurisdiction polygon covers. Pieces smaller than `maxArea_km2` are assigned to
+#' a neighbouring jurisdiction (see `assignPiecesToJurisdiction`) and added to
+#' the jurisdiction layer as extra multipart features, one per receiving code,
+#' flagged `fringe_assigned`. Any piece at or above the limit stops the run, as
+#' a real hole. `maxArea_km2 = 0` disables the step. Returns list(Jurisdiction,
+#' timing, fringe), where `fringe` summarises pieces and area per jurisdiction
+#' (NULL when nothing was assigned).
 assignFringeToNeighbour <- function(
   Jurisdiction,
   studyArea,
@@ -501,6 +558,13 @@ assignFringeToNeighbour <- function(
   )
 }
 
+#' Require that jurisdictions cover all non-lake study-area land exactly once
+#'
+#' Stops when jurisdiction polygons overlap inside the study area, or when
+#' non-lake land is left uncovered by more than `max(areaTolerance, 1e-10 *
+#' land area)` square metres. An empty jurisdiction layer is accepted only when
+#' no non-lake land exists. Runs after the fringe assignment, so small gaps have
+#' already been dealt with. Returns TRUE invisibly.
 validateJurisdictionCoverage <- function(
   Jurisdiction,
   studyArea,
