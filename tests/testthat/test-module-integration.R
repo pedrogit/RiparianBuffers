@@ -150,3 +150,32 @@ testthat::test_that("standalone default grid is 240 m and supplied 1000 m grid w
   sim <- sol_sim("RiparianBuffers", dirname(sol_module), objects)
   testthat::expect_equal(terra::res(sim$PlanningGrid), c(1000, 1000))
 })
+
+testthat::test_that("jurisdictionMargin_m defaults to 100 km and invalid values are rejected", {
+  mkpaths <- function() list(
+    modulePath = dirname(sol_module),
+    inputPath = sol_dir("p_in"), outputPath = sol_dir("p_out"),
+    cachePath = sol_dir("p_cache"), scratchPath = sol_dir("p_scr")
+  )
+  defaults <- SpaDES.core::simInit(
+    times = list(start = 1, end = 1),
+    modules = "RiparianBuffers",
+    objects = sol_sim_objects(),
+    paths = mkpaths()
+  )
+  p <- SpaDES.core::P(defaults, module = "RiparianBuffers")
+  testthat::expect_identical(p$jurisdictionMargin_m, 1e5)
+  for (bad in list(-1, NA_real_, c(1, 2), "a")) {
+    sim <- SpaDES.core::simInit(
+      times = list(start = 1, end = 1),
+      modules = "RiparianBuffers",
+      objects = sol_sim_objects(),
+      paths = mkpaths(),
+      params = list(RiparianBuffers = list(jurisdictionMargin_m = bad))
+    )
+    sol_error(
+      suppressWarnings(SpaDES.core::spades(sim, debug = FALSE)),
+      "jurisdictionMargin_m"
+    )
+  }
+})

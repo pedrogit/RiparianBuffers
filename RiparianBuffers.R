@@ -48,6 +48,18 @@ defineModule(
         )
       ),
       defineParameter(
+        "jurisdictionMargin_m",
+        "numeric",
+        1e5,
+        0,
+        NA,
+        paste(
+          "Jurisdictions are cropped to the study extent plus this margin (metres) before repair,",
+          "which makes continental layers much faster. Too small a margin leaves an artificial edge",
+          "that the coverage check reports as uncovered land."
+        )
+      ),
+      defineParameter(
         "exportVectorBuffer",
         "logical",
         TRUE,

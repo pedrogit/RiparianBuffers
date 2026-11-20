@@ -66,6 +66,16 @@ riparianBuffersInit <- function(sim) {
   ) {
     stop("fringeMaxArea_km2 must be one finite nonnegative number.")
   }
+  margin <- params$jurisdictionMargin_m
+  if (
+    !is.numeric(margin) ||
+      length(margin) != 1L ||
+      is.na(margin) ||
+      !is.finite(margin) ||
+      margin < 0
+  ) {
+    stop("jurisdictionMargin_m must be one finite nonnegative number.")
+  }
   # Isolate all writable products from the original module's files and caches.
   paths <- SpaDES.core::paths(sim)
   input <- SpaDES.core::inputPath(sim)
@@ -89,7 +99,8 @@ riparianBuffersInit <- function(sim) {
     cacheDir = cache,
     moduleDir = moduleDir,
     reuseDir = input,
-    fringeMaxArea_km2 = fringeMax
+    fringeMaxArea_km2 = fringeMax,
+    jurisdictionMargin_m = margin
   )
   # Create destination directories only after the input contract has been checked.
   dir.create(output, recursive = TRUE, showWarnings = FALSE)
@@ -127,6 +138,7 @@ riparianBuffersInit <- function(sim) {
       policyFallback = prepared$policyFallback,
       fringeAssigned = prepared$fringeAssigned,
       fringeMaxArea_km2 = fringeMax,
+      jurisdictionMargin_m = margin,
       geometryRepairs = prepared$repairs,
       sources = prepared$sources,
       haloWidth_m = prepared$haloWidth_m,

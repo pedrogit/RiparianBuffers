@@ -42,9 +42,10 @@ validateMetreCRS <- function(x, label) {
 #' Works on a private copy so the caller's object is never changed. Checks the
 #' class, CRS and geometry type (`type` is "polygons" or "lines"), repairs
 #' invalid geometries (reporting how many), rejects empty geometries, and
-#' projects to `targetCRS` when given. Returns list(vector, repaired), where
+#' projects to `targetCRS` when given. With `cropTo` (a polygon in the working
+#' CRS) the features are first cropped to its bounding box, before repair. Returns list(vector, repaired), where
 #' `repaired` is the number of geometries that needed repair.
-validateVector <- function(x, label, type, targetCRS = NULL) {
+validateVector <- function(x, label, type, targetCRS = NULL, cropTo = NULL) {
   # Accept only in-memory vector formats that terra can safely copy and inspect.
   if (!inherits(x, c("SpatVector", "sf", "sfc"))) {
     stop(label, " must be a SpatVector or sf object.")
@@ -60,6 +61,9 @@ validateVector <- function(x, label, type, targetCRS = NULL) {
   if (nrow(x) && !identical(terra::geomtype(x), type)) {
     stop(label, " must contain ", type, ".")
   }
+  # Crop before repair: repairing a continental layer costs minutes, and only
+  # the part near the study area is ever used.
+  x <- cropToRegion(x, cropTo)
   repaired <- 0L
   if (nrow(x)) {
     # Repair invalid topology on the private copy and report how many features
@@ -619,4 +623,30 @@ validateJurisdictionCoverage <- function(
     }
   }
   invisible(TRUE)
+}
+
+#' Keep only the part of `x` near a region (a coarse crop by bounding box)
+#'
+#' `region` is a polygon in the working CRS. When `x` uses another CRS the region
+#' is densified, projected and padded by 1% so the crop box is conservative.
+#' Used on the jurisdiction layer, whose parts far from the study area cannot
+#' affect the result but make repair, dissolving and erasing very slow.
+#' Returns `x` unchanged when `region` is NULL or `x` has no features.
+cropToRegion <- function(x, region) {
+  if (is.null(region) || !nrow(x)) {
+    return(x)
+  }
+  if (terra::same.crs(x, region)) {
+    box <- terra::ext(region)
+  } else {
+    e <- as.vector(terra::ext(region))
+    dense <- terra::densify(
+      terra::deepcopy(region),
+      interval = max(e[2] - e[1], e[4] - e[3]) / 256
+    )
+    b <- as.vector(terra::ext(terra::project(dense, terra::crs(x))))
+    pad <- max(b[2] - b[1], b[4] - b[3]) / 100
+    box <- terra::ext(b[1] - pad, b[2] + pad, b[3] - pad, b[4] + pad)
+  }
+  terra::crop(x, box)
 }

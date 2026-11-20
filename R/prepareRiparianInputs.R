@@ -266,7 +266,7 @@ obtainRiparianSource <- function(
 #' cannot cut it short) and used as a coarse filter, so only nearby features are
 #' read from a very large file. Features are kept whole; they are then validated,
 #' repaired if needed and projected to `targetCRS`.
-readRiparianHalo <- function(raw, halo, targetCRS) {
+readRiparianHalo <- function(raw, halo, targetCRS, cropTo = NULL) {
   # OGR spatial filter selects WHOLE source features; do not crop shorelines/endpoints.
   header <- terra::vect(raw$path, proxy = TRUE)
   # Densify projected envelope edges before transforming: four corners alone can
@@ -297,7 +297,7 @@ readRiparianHalo <- function(raw, halo, targetCRS) {
   # Read candidates using the native-CRS filter; features are intentionally
   # retained whole and are selected precisely after projection.
   v <- terra::vect(raw$path, filter = filter)
-  validateVector(v, raw$source$name, raw$source$type, targetCRS)
+  validateVector(v, raw$source$name, raw$source$type, targetCRS, cropTo)
 }
 
 #' Precise halo selection in the working CRS
@@ -337,7 +337,8 @@ prepareRiparianInputs <- function(
   moduleDir,
   reuseDir = NULL,
   obtainSource = obtainRiparianSource,
-  fringeMaxArea_km2 = 0
+  fringeMaxArea_km2 = 0,
+  jurisdictionMargin_m = 1e5
 ) {
   # Capture original CRS declarations for diagnostics before inputs are copied,
   # repaired, or projected to the PlanningGrid working CRS.
@@ -406,12 +407,12 @@ prepareRiparianInputs <- function(
   provenance <- list()
   # Normalise either downloaded raw data or caller data to a validated,
   # projected whole-feature layer for one required input dataset.
-  prepare <- function(x, dataset, type) {
+  prepare <- function(x, dataset, type, cropTo = NULL) {
     if (is.null(x)) {
       # Obtain raw global/continental data, then read only halo candidates.
       raw <- obtainSource(dataset, cacheDir, reuseDir)
       sourceCRS[[dataset]] <<- terra::crs(terra::vect(raw$path, proxy = TRUE))
-      prepared <- readRiparianHalo(raw, halo, target)
+      prepared <- readRiparianHalo(raw, halo, target, cropTo)
       provenance[[dataset]] <<- list(
         origin = raw$source$name,
         url = raw$source$url,
@@ -428,7 +429,8 @@ prepareRiparianInputs <- function(
         x,
         paste0("supplied ", dataset),
         type,
-        target
+        target,
+        cropTo
       )
       provenance[[dataset]] <<- list(
         origin = "supplied read-only input",
@@ -446,7 +448,17 @@ prepareRiparianInputs <- function(
     selectRiparianHalo(v, halo)
   }
   # Jurisdictions establish applicable policy before hydrology is prepared.
-  j <- prepare(Jurisdiction, "jurisdiction", "polygons")
+  # Only jurisdiction land near the study area matters; a wide margin keeps
+  # artificial crop edges far from every uncovered piece.
+  b <- as.vector(terra::ext(area))
+  jurisdictionCrop <- terra::as.polygons(
+    terra::ext(
+      b[1] - jurisdictionMargin_m, b[2] + jurisdictionMargin_m,
+      b[3] - jurisdictionMargin_m, b[4] + jurisdictionMargin_m
+    ),
+    crs = target
+  )
+  j <- prepare(Jurisdiction, "jurisdiction", "polygons", jurisdictionCrop)
   resolved <- resolveRiparianPolicy(policy, j)
   # Prepare both feature types needed to generate stream and lake buffers.
   s <- prepare(streams, "streams", "lines")
