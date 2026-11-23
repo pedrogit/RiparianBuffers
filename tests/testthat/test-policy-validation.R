@@ -273,3 +273,36 @@ testthat::test_that("uncovered non-lake land splits into pieces and removes only
   full <- uncoveredNonLakeLand(jur, study, rbind(sol_rect(0, 10), sol_rect(90, 100)))
   testthat::expect_equal(sum(terra::expanse(full, transform = FALSE)), 0, tolerance = 1e-9)
 })
+
+testthat::test_that("prepareRiparianInputs checks overlaps before fringe assignment and enforces coverage", {
+  f <- sol_fixture(20)
+  # Overlapping jurisdictions stop immediately even when fringes are enabled and a gap exists.
+  ov <- rbind(sol_rect(0, 60), sol_rect(40, 80))
+  ov$jurisdiction_code <- c("ON", "QC")
+  fOverlap <- f
+  fOverlap$Jurisdiction <- ov
+  sol_error(sol_prepared(fOverlap, fringeMaxArea_km2 = 1), "overlap")
+
+  # Small gap is assigned when fringeMaxArea_km2 > 0, yielding clean coverage,
+  # and stops when fringeMaxArea_km2 = 0 or the piece meets the limit.
+  fGap <- f
+  fGap$Jurisdiction <- sol_rect(0, 60)
+  fGap$Jurisdiction$jurisdiction_code <- "ON"
+  prep <- suppressMessages(sol_prepared(fGap, fringeMaxArea_km2 = 0.01))
+  testthat::expect_equal(prep$fringeAssigned$pieces, 1L)
+  testthat::expect_identical(
+    validateJurisdictionCoverage(prep$Jurisdiction, prep$studyArea, prep$lakes),
+    TRUE
+  )
+  sol_error(sol_prepared(fGap, fringeMaxArea_km2 = 0), "uncovered")
+  sol_error(sol_prepared(fGap, fringeMaxArea_km2 = 0.004), "uncovered non-lake land piece")
+
+  # Empty jurisdictions fail on non-lake land and pass when lakes cover everything.
+  fEmpty <- f
+  fEmpty$Jurisdiction <- f$Jurisdiction[FALSE, ]
+  sol_error(sol_prepared(fEmpty, fringeMaxArea_km2 = 1), "no polygons")
+  fEmpty$lakes <- sol_rect(0, 100)
+  fEmpty$lakes$Lake_area <- 0.5
+  prepLake <- sol_prepared(fEmpty, fringeMaxArea_km2 = 1)
+  testthat::expect_null(prepLake$fringeAssigned)
+})

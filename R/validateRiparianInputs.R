@@ -350,7 +350,8 @@ assignFringeToNeighbour <- function(
   vertexSpacing_m = 1000,
   areaTolerance = 1e-6,
   workers = 1L,
-  workDir = tempdir()
+  workDir = tempdir(),
+  study = NULL
 ) {
   # Shoreline and boundary-mismatch fringes are many tiny pieces of non-lake
   # land that no jurisdiction polygon covers. Each piece smaller than
@@ -362,7 +363,9 @@ assignFringeToNeighbour <- function(
   if (maxArea_km2 <= 0 || !nrow(Jurisdiction)) {
     return(unchanged)
   }
-  study <- terra::aggregate(studyArea)
+  if (is.null(study)) {
+    study <- terra::aggregate(studyArea)
+  }
   gap <- uncoveredNonLakeLand(Jurisdiction, study, lakes)
   if (!nrow(gap)) {
     return(unchanged)
@@ -414,6 +417,18 @@ assignFringeToNeighbour <- function(
     geometry = geometry,
     crs = sf::st_crs(terra::crs(Jurisdiction))
   ))
+  # Cheap sanity check that combining pieces through sf did not drop or distort area.
+  extraArea <- sum(terra::expanse(extra, transform = FALSE))
+  totalArea <- sum(areas)
+  if (abs(extraArea - totalArea) > max(areaTolerance, totalArea * 1e-9)) {
+    stop(
+      "Fringe polygon combination changed total area (",
+      signif(extraArea, 8),
+      " vs ",
+      signif(totalArea, 8),
+      " m2)."
+    )
+  }
   Jurisdiction$fringe_assigned <- FALSE
   extra$fringe_assigned <- TRUE
   list(
@@ -429,15 +444,15 @@ assignFringeToNeighbour <- function(
   )
 }
 
-#' Require that jurisdictions cover all non-lake study-area land exactly once
+#' Require that jurisdiction polygons do not overlap inside the study area
 #'
-#' Stops when jurisdiction polygons overlap inside the study area, or when
-#' non-lake land is left uncovered by more than `max(areaTolerance, 1e-10 *
-#' land area)` square metres. An empty jurisdiction layer is accepted only when
-#' no non-lake land exists. Runs after the fringe assignment, so small gaps have
-#' already been dealt with. Returns TRUE invisibly.
-validateJurisdictionCoverage <- function(
+#' Stops when jurisdictions overlap inside `study` (already dissolved), or when
+#' `Jurisdiction` is empty while non-lake land exists. Running this before
+#' fringe assignment avoids re-dissolving hundreds of thousands of disjoint
+#' fringe polygons afterwards. Returns TRUE invisibly.
+validateJurisdictionOverlap <- function(
   Jurisdiction,
+  study,
   studyArea,
   lakes,
   areaTolerance = 1e-6
@@ -447,9 +462,6 @@ validateJurisdictionCoverage <- function(
   area <- function(x) {
     if (is.null(x) || !nrow(x)) 0 else sum(terra::expanse(x, transform = FALSE))
   }
-  # Dissolve study polygons once; reused by the overlap and gap checks. Lakes
-  # are no longer erased from the study area here (see the gap step below).
-  study <- terra::aggregate(studyArea)
   if (!nrow(Jurisdiction)) {
     # An empty jurisdiction layer is acceptable only when no non-lake land
     # remains, such as a study area wholly occupied by lakes. The tiled helper
@@ -473,7 +485,22 @@ validateJurisdictionCoverage <- function(
       )
     }
   }
-  gap <- uncoveredNonLakeLand(Jurisdiction, study, lakes)
+  invisible(TRUE)
+}
+
+#' Require that an already-extracted uncovered non-lake gap is negligible
+#'
+#' Stops when `gap` (from `uncoveredNonLakeLand`) exceeds
+#' `max(areaTolerance, 1e-10 * land area)` square metres. Returns TRUE invisibly.
+validateJurisdictionGap <- function(
+  gap,
+  studyArea,
+  lakes,
+  areaTolerance = 1e-6
+) {
+  area <- function(x) {
+    if (is.null(x) || !nrow(x)) 0 else sum(terra::expanse(x, transform = FALSE))
+  }
   gapArea <- area(gap)
   # The failure threshold is max(areaTolerance, 1e-10 * land area), so it is
   # never below areaTolerance. The land area is therefore needed only when the
@@ -490,6 +517,40 @@ validateJurisdictionCoverage <- function(
     }
   }
   invisible(TRUE)
+}
+
+#' Require that jurisdictions cover all non-lake study-area land exactly once
+#'
+#' Stops when jurisdiction polygons overlap inside the study area, or when
+#' non-lake land is left uncovered by more than `max(areaTolerance, 1e-10 *
+#' land area)` square metres. An empty jurisdiction layer is accepted only when
+#' no non-lake land exists. Returns TRUE invisibly.
+validateJurisdictionCoverage <- function(
+  Jurisdiction,
+  studyArea,
+  lakes,
+  areaTolerance = 1e-6
+) {
+  # Dissolve study polygons once; reused by the overlap and gap checks. Lakes
+  # are no longer erased from the study area here (see uncoveredNonLakeLand).
+  study <- terra::aggregate(studyArea)
+  validateJurisdictionOverlap(
+    Jurisdiction,
+    study,
+    studyArea,
+    lakes,
+    areaTolerance = areaTolerance
+  )
+  if (!nrow(Jurisdiction)) {
+    return(invisible(TRUE))
+  }
+  gap <- uncoveredNonLakeLand(Jurisdiction, study, lakes)
+  validateJurisdictionGap(
+    gap,
+    studyArea,
+    lakes,
+    areaTolerance = areaTolerance
+  )
 }
 
 #' Keep only the part of `x` near a region (a coarse crop by bounding box)

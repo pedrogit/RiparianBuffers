@@ -211,7 +211,8 @@ stops the run, so a missing province is never hidden.
 
 ```mermaid
 flowchart TD
-    A["Jurisdictions, study area, lakes"] --> B["uncoveredNonLakeLand<br/>study minus jurisdictions minus lakes"]
+    A["Jurisdictions, study area, lakes"] --> O["validateJurisdictionOverlap<br/>no overlapping jurisdictions"]
+    O --> B["uncoveredNonLakeLand<br/>study minus jurisdictions minus lakes"]
     B --> C{"any piece at or above<br/>fringeMaxArea_km2?"}
     C -- yes --> X["stop: a real hole in the boundaries"]
     C -- no --> D["assignPiecesToJurisdiction<br/>by 128 km tile"]
@@ -221,16 +222,18 @@ flowchart TD
     G -- no --> I["winning vote decides"]
     H --> J["pieces added as extra jurisdiction features<br/>flagged fringe_assigned"]
     I --> J
-    J --> K["validateJurisdictionCoverage<br/>overlap and remaining gap checks"]
 ```
 
 Why the search is tiled: comparing every piece with the whole jurisdiction layer
 (millions of vertices) ran out of memory on a large study area, so each group of
-pieces is compared with a small crop of the layer. The count, total area and
-largest piece are reported in a message and in `Riparian$fringeAssigned`.
+pieces is compared with a small crop of the layer. Overlaps are checked on the
+original jurisdictions first so the module does not have to re-dissolve the
+newly attached fringe pieces afterwards. The count, total area and largest piece
+are reported in a message and in `Riparian$fringeAssigned`.
 
-Functions: `assignFringeToNeighbour`, `assignPiecesToJurisdiction`,
-`uncoveredNonLakeLand`, `nonLakeLandArea`, `validateJurisdictionCoverage`.
+Functions: `validateJurisdictionOverlap`, `assignFringeToNeighbour`,
+`assignPiecesToJurisdiction`, `uncoveredNonLakeLand`, `nonLakeLandArea`,
+`validateJurisdictionGap`, `validateJurisdictionCoverage`.
 
 ### Preparation, end to end
 
@@ -244,10 +247,10 @@ flowchart TD
     W --> HS["Streams and lakes<br/>supplied or downloaded"]
     J --> R["resolveRiparianPolicy<br/>names to codes, default fallback"]
     HS --> C["classifyHydrology<br/>small or large class"]
-    R --> F["assignFringeToNeighbour<br/>small gaps take a neighbour's policy"]
-    C --> F
-    F --> K["validateJurisdictionCoverage<br/>no overlap, no large gap"]
-    K --> O["prepared studyArea, jurisdictions,<br/>policy, streams, lakes"]
+    R --> K["validateJurisdictionOverlap<br/>no overlaps in supplied boundaries"]
+    C --> K
+    K --> F["assignFringeToNeighbour<br/>small gaps take a neighbour's policy;<br/>large gaps stop (or strict gap check if 0)"]
+    F --> O["prepared studyArea, jurisdictions,<br/>policy, streams, lakes"]
 ```
 
 Missing sources are obtained by `obtainRiparianSource`. `riparianSource` names
@@ -343,7 +346,7 @@ Functions: `buildPolicyFootprints`, `clipToDestination`, `selectIntersecting`,
 | `riparianBuffersInit.R` | `riparianBuffersInit` | Stage 1; calls stages 2 and 4; stores `Riparian`. |
 | `prepareRiparianInputs.R` | `prepareRiparianInputs`, `obtainRiparianSource`, `riparianSource`, `validateShapefile`, `zipShapefileProblem`, `readRiparianHalo`, `selectRiparianHalo` | Stage 2: obtain, read and select inputs. |
 | `validateRiparianInputs.R` | `validateVector`, `validateMetreCRS`, `validatePlanningGrid`, `classifyHydrology` | Stage 2: validation and classes. |
-| `validateRiparianInputs.R` | `uncoveredNonLakeLand`, `assignFringeToNeighbour`, `assignPiecesToJurisdiction`, `nonLakeLandArea`, `validateJurisdictionCoverage` | Fringes and the coverage check. |
+| `validateRiparianInputs.R` | `uncoveredNonLakeLand`, `assignFringeToNeighbour`, `nonLakeLandArea`, `validateJurisdictionOverlap`, `validateJurisdictionGap`, `validateJurisdictionCoverage` | Fringes and the coverage check. |
 | `resolveRiparianPolicy.R` | `resolveRiparianPolicy` | Maps jurisdictions to policy rows, with default fallback. |
 | `buildPolicyFootprints.R` | `buildPolicyFootprints`, `clipToDestination`, `selectIntersecting`, `intersectPolygons`, `unionPolygons`, `polygonOnly` | Stage 3: the tile footprint. |
 | `fractionalCoverage.R` | `fractionalCoverage`, `exactTileFractions` | Stage 4: tile loop, cell fractions, publication. |

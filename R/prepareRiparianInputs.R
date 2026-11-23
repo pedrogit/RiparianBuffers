@@ -465,30 +465,45 @@ prepareRiparianInputs <- function(
   # Prepare both feature types needed to generate stream and lake buffers.
   s <- prepare(streams, "streams", "lines")
   l <- prepare(lakes, "lakes", "polygons")
-  # Small uncovered fringes (shoreline or boundary mismatch) receive their
-  # neighbour's policy; larger pieces are left for the strict check to reject.
-  assigned <- assignFringeToNeighbour(
-    resolved$Jurisdiction,
-    area,
-    l,
-    maxArea_km2 = fringeMaxArea_km2,
-    workers = workers,
-    workDir = workDir
-  )
-  resolved$Jurisdiction <- assigned$Jurisdiction
-  if (!is.null(assigned$fringe)) {
-    message(
-      "Assigned ",
-      sum(assigned$fringe$pieces),
-      " uncovered non-lake fringe piece(s) (",
-      signif(sum(assigned$fringe$area_km2), 5),
-      " km2, largest ",
-      signif(max(assigned$fringe$largest_km2), 4),
-      " km2) to their neighbouring jurisdiction."
+  # Dissolve studyArea once for overlap checking, fringe extraction and gap checks.
+  study <- terra::aggregate(area)
+  # Check supplied jurisdictions for overlaps (and empty coverage) BEFORE fringe
+  # assignment: checking the original provinces is fast, whereas re-checking
+  # after appending tens of thousands of disjoint fringe pieces re-dissolves
+  # every piece.
+  validateJurisdictionOverlap(resolved$Jurisdiction, study, area, l)
+  assigned <- list(Jurisdiction = resolved$Jurisdiction, fringe = NULL)
+  if (nrow(resolved$Jurisdiction)) {
+    # Small uncovered fringes (shoreline or boundary mismatch) receive their
+    # neighbour's policy; any piece at or above fringeMaxArea_km2 stops here.
+    assigned <- assignFringeToNeighbour(
+      resolved$Jurisdiction,
+      area,
+      l,
+      maxArea_km2 = fringeMaxArea_km2,
+      workers = workers,
+      workDir = workDir,
+      study = study
     )
+    resolved$Jurisdiction <- assigned$Jurisdiction
+    if (!is.null(assigned$fringe)) {
+      message(
+        "Assigned ",
+        sum(assigned$fringe$pieces),
+        " uncovered non-lake fringe piece(s) (",
+        signif(sum(assigned$fringe$area_km2), 5),
+        " km2, largest ",
+        signif(max(assigned$fringe$largest_km2), 4),
+        " km2) to their neighbouring jurisdiction."
+      )
+    } else if (fringeMaxArea_km2 <= 0) {
+      # Fringe assignment was disabled, so require strict coverage directly.
+      # When fringeMaxArea_km2 > 0, assignFringeToNeighbour already checked the
+      # gap and either found <= areaTolerance or assigned every disjoint piece.
+      gap <- uncoveredNonLakeLand(resolved$Jurisdiction, study, l)
+      validateJurisdictionGap(gap, area, l)
+    }
   }
-  # Require non-lake land to have one non-overlapping policy jurisdiction.
-  validateJurisdictionCoverage(resolved$Jurisdiction, area, l)
   # Return validated inputs plus auditable policy, CRS, repair, and source data.
   list(
     studyArea = area,
