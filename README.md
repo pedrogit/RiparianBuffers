@@ -114,10 +114,10 @@ A jurisdiction with no row uses the `default` row. Each such case is reported in
 |---|---|---|
 | `tileCells` | `128` | Cells per tile side. Larger tiles need more memory. |
 | `fringeMaxArea_km2` | `50` | Uncovered land pieces smaller than this take a neighbouring jurisdiction's policy; a larger one stops the run. `0` turns the step off and keeps a strict check. |
-| `exportVectorBuffer` | `TRUE` | Also write the footprint as a GeoPackage (`riparian_buffers.gpkg`). `FALSE` skips only that file; the raster is unchanged. |
+| `exportVectorBuffer` | `FALSE` | `TRUE` also writes the footprint as a GeoPackage (`riparian_buffers.gpkg`); the raster is unchanged. Turns `resume` off, because tile footprints are not saved. |
 | `jurisdictionMargin_m` | `100000` | Jurisdictions are cropped to the study extent plus this margin (metres) before repair. Too small a margin makes the coverage check report uncovered land. |
 | `workers` | `4` | Number of R processes used for the fringe assignment and the tile loop. `1` runs everything in the main process. The raster is identical for any value. Each worker holds its own copy of the prepared inputs, so memory grows with the number of workers. |
-| `resume` | `TRUE` | Save each finished tile in the scratch folder so a rerun after a failure skips it. Not used when `exportVectorBuffer` is `TRUE`. |
+| `resume` | `TRUE` | Save each finished tile in the scratch folder so a rerun after a failure skips it. Ignored, with a message, when `exportVectorBuffer` is `TRUE`. |
 
 ### Folders and packages
 
@@ -438,7 +438,7 @@ fringe assignment and the tile loop, but not the other preparation steps
 (repairing and validating the jurisdictions, and finding the uncovered land),
 which run in the main process. Every worker keeps its own copy of the prepared
 inputs, so check memory before raising it on a large area. With
-`exportVectorBuffer = TRUE` the footprints are written by the main process, in
+`exportVectorBuffer = TRUE` (not the default) the footprints are written by the main process, in
 tile order, and the run cannot be resumed.
 Per-tile cost is dominated by buffering and clipping near very large lakes and by
 destinations with very detailed boundaries.

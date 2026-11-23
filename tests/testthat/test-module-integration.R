@@ -72,10 +72,10 @@ sol_sim <- function(modules, modulePath, objects, export = FALSE) {
   SpaDES.core::spades(sim, debug = FALSE)
 }
 
-testthat::test_that("actual simInit/spades produces isolated result and default vector export", {
+testthat::test_that("actual simInit/spades produces isolated result and the vector export when requested", {
   objects <- sol_sim_objects()
   before <- lapply(objects, sol_signature)
-  # Omit the export parameter to exercise the metadata default TRUE.
+  # Ask for the export explicitly: the metadata default is FALSE.
   root <- sol_dir("default_sim")
   paths <- list(
     modulePath = dirname(sol_module),
@@ -92,7 +92,7 @@ testthat::test_that("actual simInit/spades produces isolated result and default 
     modules = "RiparianBuffers",
     objects = objects,
     paths = paths,
-    params = list(RiparianBuffers = list(tileCells = 1L))
+    params = list(RiparianBuffers = list(tileCells = 1L, exportVectorBuffer = TRUE))
   )
   sim <- SpaDES.core::spades(sim, debug = FALSE)
   r <- sim$Riparian
@@ -167,6 +167,7 @@ testthat::test_that("module parameters default as documented and invalid values 
   testthat::expect_identical(p$jurisdictionMargin_m, 1e5)
   testthat::expect_identical(as.integer(p$workers), 4L)
   testthat::expect_true(p$resume)
+  testthat::expect_false(p$exportVectorBuffer)
   for (bad in list(-1, NA_real_, c(1, 2), "a")) {
     sim <- SpaDES.core::simInit(
       times = list(start = 1, end = 1),

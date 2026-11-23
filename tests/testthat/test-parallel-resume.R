@@ -159,3 +159,21 @@ testthat::test_that("fringe assignment gives the same answer with workers", {
   testthat::expect_identical(many$method, one$method)
   testthat::expect_true(all(c("component", "seconds", "peak_rss_MB") %in% names(many$timing)))
 })
+
+testthat::test_that("a message says resume is ignored when the vector is exported", {
+  p <- sol_multi_fixture()
+  said <- function(...) {
+    messages <- character()
+    withCallingHandlers(
+      suppressWarnings(sol_run_with(p, tileCells = 2L, ...)),
+      message = function(m) {
+        messages <<- c(messages, conditionMessage(m))
+        invokeRestart("muffleMessage")
+      }
+    )
+    any(grepl("resume = TRUE is ignored", messages))
+  }
+  testthat::expect_true(said(exportVector = TRUE, resume = TRUE))
+  testthat::expect_false(said(exportVector = TRUE, resume = FALSE))
+  testthat::expect_false(said(exportVector = FALSE, resume = TRUE))
+})

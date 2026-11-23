@@ -79,7 +79,7 @@ fractionalCoverage <- function(
   outputDir,
   scratchDir,
   tileCells = 128L,
-  exportVector = TRUE,
+  exportVector = FALSE,
   workers = 1L,
   resume = TRUE
 ) {
@@ -261,6 +261,12 @@ fractionalCoverage <- function(
   # Footprints are not saved, so a run that exports the vector cannot resume.
   progressDir <- if (resume && !exportVector) {
     file.path(scratchDir, "riparian_progress")
+  }
+  if (resume && exportVector) {
+    message(
+      "resume = TRUE is ignored because exportVector = TRUE: tile footprints are ",
+      "not saved, so a failed run restarts from the first tile."
+    )
   }
   saved <- integer()
   if (!is.null(progressDir)) {

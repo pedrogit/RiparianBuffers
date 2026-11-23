@@ -78,16 +78,16 @@ defineModule(
         NA,
         paste(
           "Save every finished tile in the scratch folder so a rerun after a failure skips them.",
-          "Not used when exportVectorBuffer is TRUE."
+          "Ignored (with a message) when exportVectorBuffer is TRUE."
         )
       ),
       defineParameter(
         "exportVectorBuffer",
         "logical",
-        TRUE,
+        FALSE,
         NA,
         NA,
-        "Export final combined lake-and-buffer footprint as GeoPackage alongside GeoTIFF."
+        "Also export the final combined lake-and-buffer footprint as GeoPackage alongside GeoTIFF. TRUE disables resume (tile footprints are not saved)."
       )
     ),
     # Declare shared inputs without claiming ownership of upstream data products.

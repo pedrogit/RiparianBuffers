@@ -84,7 +84,7 @@ Use one output-grid-aligned tiling parameter expressed in cells. Avoid a contine
 
 ### Raster and optional vector export
 
-Add module parameter `exportVectorBuffer` of class logical, default **TRUE**, validated as one non-missing boolean. In the same module run that writes the fraction GeoTIFF, export `riparian_buffers.gpkg` (a GeoPackage, layer `riparian_buffers`) when this parameter is TRUE. FALSE skips vector export only: the raster and its values must be identical. Use the configured output path and isolated filenames; never overwrite existing results silently.
+Add module parameter `exportVectorBuffer` of class logical, default **FALSE** (changed from TRUE), validated as one non-missing boolean. In the same module run that writes the fraction GeoTIFF, export `riparian_buffers.gpkg` (a GeoPackage, layer `riparian_buffers`) when this parameter is TRUE. FALSE skips vector export only: the raster and its values must be identical. Use the configured output path and isolated filenames; never overwrite existing results silently.
 
 Export the **final footprint used for the raster numerator**: unioned destination-policy buffer footprints plus mapped lake interiors, clipped to the study area. Apply receiving-jurisdiction clipping to policy buffers, not to the independently included lake interiors. Do not export raw hydrology, uncorrected buffer polygons, or a polygonization of raster cells. Use the same projected CRS as the output raster. Document that this layer represents combined lake-and-buffer coverage, not land-only riparian habitat or an actual ecological-boundary survey.
 
@@ -92,7 +92,7 @@ Support tiled processing without a global dissolve: append non-overlapping tile-
 
 The export was first planned as a Shapefile with a 2 GiB size check; it was changed to a GeoPackage so the full Eastern Canada area can be exported. Stage files in module-specific scratch space and publish completed outputs together; identify incomplete exports clearly on failure. For empty footprints, validate that a correctly projected empty polygon Shapefile can be written and read back; do not invent non-empty placeholder geometry.
 
-Explain the boolean parameter, default TRUE, output location, required sidecars, lake inclusion, tile seams, and FALSE behavior in README/manual and examples.
+Explain the boolean parameter, default FALSE, output location, required sidecars, lake inclusion, tile seams, and FALSE behavior in README/manual and examples.
 
 ## 5. Proposed files
 

@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- **Breaking: `exportVectorBuffer` now defaults to FALSE.** The GeoPackage is
+  written only when requested. With `exportVectorBuffer = TRUE`, `resume` is
+  ignored and a message says so (tile footprints are not saved).
+
 - **Jurisdictions are cropped before repair.** Only jurisdiction land within
   `jurisdictionMargin_m` (default 100 km) of the study extent is repaired,
   dissolved and used; on the ON/QC 200 km test this cut preparation from 278 s to
@@ -13,6 +17,7 @@
   saves each finished tile under `riparian_progress` in the scratch folder, and a
   rerun with identical inputs and code skips them. A failing tile is reported by
   number, row, column and extent. Resuming is off when the vector is exported.
+
 - **Faster tile loop (about 109 to 59 min on the Eastern Canada area).** Buffers
   are made once per class and width and shared across destinations; buffers
   wholly inside one destination skip the exact clip (`clipToDestination`);
