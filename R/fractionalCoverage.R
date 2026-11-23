@@ -60,6 +60,15 @@ exactTileFractions <- function(template, footprint) {
 #' GeoPackage (`riparian_buffers.gpkg`, layer `riparian_buffers`), which has no
 #' practical size limit, unlike a Shapefile (2 GiB per component).
 #' Output geometry comprises disjoint tile cores; seams are processing artifacts.
+#'
+#' Tiles are independent, so with `workers > 1` they are computed in that many
+#' separate R processes (see `runJobs`) while this process writes the raster in
+#' row order. With `resume = TRUE` every finished tile is also saved under
+#' `scratchDir/riparian_progress`; after a failure or interruption, running again
+#' with the same inputs skips those tiles. The saved tiles are deleted when the
+#' final files are published. Resuming is off when the vector is exported, since
+#' footprints are not saved. A failing tile is reported by number, position and
+#' extent.
 fractionalCoverage <- function(
   studyArea,
   PlanningGrid,
@@ -70,7 +79,9 @@ fractionalCoverage <- function(
   outputDir,
   scratchDir,
   tileCells = 128L,
-  exportVector = TRUE
+  exportVector = TRUE,
+  workers = 1L,
+  resume = TRUE
 ) {
   # Validate the tile dimension before using it as a sequence increment or size.
   if (
@@ -91,6 +102,18 @@ fractionalCoverage <- function(
       is.na(exportVector)
   ) {
     stop("exportVector must be one non-missing logical value.")
+  }
+  if (
+    !is.numeric(workers) ||
+      length(workers) != 1L ||
+      is.na(workers) ||
+      workers < 1 ||
+      workers != floor(workers)
+  ) {
+    stop("workers must be one positive integer.")
+  }
+  if (!is.logical(resume) || length(resume) != 1L || is.na(resume)) {
+    stop("resume must be one non-missing logical value.")
   }
   if (!requireNamespace("sf", quietly = TRUE)) {
     stop("Exact planar coverage requires package 'sf'; install it explicitly.")
@@ -195,62 +218,92 @@ fractionalCoverage <- function(
   opened <- TRUE
   nr <- terra::nrow(PlanningGrid)
   nc <- terra::ncol(PlanningGrid)
-  resolution <- terra::res(PlanningGrid)
-  gridExtent <- as.vector(terra::ext(PlanningGrid))
-  # Convert after validation so loop arithmetic uses ordinary integer tile sizes.
   tileCells <- as.integer(tileCells)
-  tileId <- 0L
+  # One row per tile, numbered stripe by stripe (left to right, top to bottom).
+  tiles <- do.call(
+    rbind,
+    lapply(seq.int(1L, nr, by = tileCells), function(row) {
+      cols <- seq.int(1L, nc, by = tileCells)
+      data.frame(
+        row = row,
+        col = cols,
+        nrows = min(tileCells, nr - row + 1L),
+        ncols = pmin(tileCells, nc - cols + 1L)
+      )
+    })
+  )
+  tiles$id <- seq_len(nrow(tiles))
+  tiles$stripe <- match(tiles$row, unique(tiles$row))
+  totalTiles <- nrow(tiles)
+  ctx <- list(
+    studyArea = studyArea,
+    Jurisdiction = Jurisdiction,
+    policy = policy,
+    streams = streams,
+    lakes = lakes,
+    maxWidth = maxWidth,
+    gridExtent = as.vector(terra::ext(PlanningGrid)),
+    resolution = terra::res(PlanningGrid),
+    dim = c(nr, nc),
+    crs = terra::crs(PlanningGrid),
+    exportVector = exportVector
+  )
+  tileFunctions <- list(
+    processTile,
+    buildPolicyFootprints,
+    exactTileFractions,
+    clipToDestination,
+    selectIntersecting,
+    intersectPolygons,
+    unionPolygons,
+    polygonOnly
+  )
+  # Footprints are not saved, so a run that exports the vector cannot resume.
+  progressDir <- if (resume && !exportVector) {
+    file.path(scratchDir, "riparian_progress")
+  }
+  saved <- integer()
+  if (!is.null(progressDir)) {
+    saved <- openTileProgress(
+      progressDir,
+      tileFingerprint(ctx, tileCells, tileFunctions)
+    )
+    saved <- saved[saved %in% tiles$id]
+    if (length(saved)) {
+      message(
+        "Resuming: ", length(saved), " of ", totalTiles,
+        " tiles were finished by an earlier run."
+      )
+    }
+  }
+  stripeIds <- unique(tiles$stripe)
+  stripeValues <- list()
+  stripeFootprints <- list()
+  have <- logical(totalTiles)
+  have[saved] <- TRUE
+  nextStripe <- 1L
   vectorStarted <- FALSE
-  totalTiles <- ceiling(nr / tileCells) * ceiling(nc / tileCells)
-  # Process row stripes so only one stripe, rather than the whole raster, is in memory.
-  for (row in seq.int(1L, nr, by = tileCells)) {
-    nrows <- min(tileCells, nr - row + 1L)
-    # A row stripe, not a full-grid matrix, is held for incremental GDAL writes.
-    stripe <- matrix(NA_real_, nrow = nrows, ncol = nc)
-    # Divide this stripe into grid-aligned tile cores.
-    for (col in seq.int(1L, nc, by = tileCells)) {
-      ncols <- min(tileCells, nc - col + 1L)
-      tileId <- tileId + 1L
-      ex <- terra::ext(
-        gridExtent[1] + (col - 1) * resolution[1],
-        gridExtent[1] + (col - 1 + ncols) * resolution[1],
-        gridExtent[4] - (row - 1 + nrows) * resolution[2],
-        gridExtent[4] - (row - 1) * resolution[2]
-      )
-      # Recreate the exact grid geometry for this tile, preserving CRS and resolution.
-      template <- terra::rast(
-        nrows = nrows,
-        ncols = ncols,
-        extent = ex,
-        crs = terra::crs(PlanningGrid)
-      )
-      # Convert the tile rectangle to a polygon for destination and footprint clipping.
-      core <- terra::as.polygons(ex, crs = terra::crs(template))
-      studyCore <- intersectPolygons(core, studyArea)
-      if (!is.null(studyCore)) {
-        # Build destination-policy buffers only where this tile intersects the study area.
-        footprint <- buildPolicyFootprints(
-          core,
-          studyArea,
-          Jurisdiction,
-          policy,
-          streams,
-          lakes,
-          core = studyCore,
-          maxWidth = maxWidth
-        )
-        fractions <- exactTileFractions(template, footprint)
-        # Mark cells outside the study area as NoData, even if a buffer reaches them.
-        inStudy <- exactTileFractions(
-          template,
-          unionPolygons(list(studyCore))
-        ) >
-          0
-        fractions[!inStudy] <- NA_real_
-        stripe[, seq.int(col, length.out = ncols)] <-
-          matrix(fractions, nrow = nrows, ncol = ncols, byrow = TRUE)
-        if (exportVector && !is.null(footprint)) {
-          footprint$tile_id <- as.integer(tileId)
+  done <- length(saved)
+  # Write every stripe that is complete and next in line (GDAL needs row order).
+  writeReadyStripes <- function() {
+    while (nextStripe <= length(stripeIds)) {
+      inStripe <- tiles[tiles$stripe == nextStripe, ]
+      if (!all(have[inStripe$id])) {
+        return(invisible())
+      }
+      stripe <- matrix(NA_real_, nrow = inStripe$nrows[1], ncol = nc)
+      for (i in seq_len(nrow(inStripe))) {
+        id <- inStripe$id[i]
+        values <- stripeValues[[as.character(id)]]
+        if (is.null(values)) {
+          values <- readRDS(tileProgressFile(progressDir, id))
+        }
+        stripe[, seq.int(inStripe$col[i], length.out = inStripe$ncols[i])] <-
+          values
+        footprint <- stripeFootprints[[as.character(id)]]
+        if (!is.null(footprint)) {
+          footprint <- terra::unwrap(footprint)
+          footprint$tile_id <- as.integer(id)
           # Append independent tile-core pieces; tile IDs retain their processing origin.
           # One geometry type for the whole layer, whatever each tile produces.
           sf::st_write(
@@ -260,14 +313,51 @@ fractionalCoverage <- function(
             quiet = TRUE,
             append = vectorStarted
           )
-          vectorStarted <- TRUE
+          vectorStarted <<- TRUE
         }
+        stripeValues[[as.character(id)]] <<- NULL
+        stripeFootprints[[as.character(id)]] <<- NULL
       }
-      message("riparian tile ", tileId, "/", totalTiles)
+      terra::writeValues(
+        writer,
+        as.vector(t(stripe)),
+        start = inStripe$row[1],
+        nrows = inStripe$nrows[1]
+      )
+      nextStripe <<- nextStripe + 1L
     }
-    # Write this completed stripe in raster cell order, then release it next iteration.
-    terra::writeValues(writer, as.vector(t(stripe)), start = row, nrows = nrows)
+    invisible()
   }
+  writeReadyStripes()
+  todo <- tiles[!have, ]
+  runJobs(
+    jobs = lapply(seq_len(nrow(todo)), function(i) as.list(todo[i, ])),
+    run = processTile,
+    ctx = ctx,
+    helpers = c(
+      "buildPolicyFootprints", "exactTileFractions", "clipToDestination",
+      "selectIntersecting", "intersectPolygons", "unionPolygons",
+      "polygonOnly"
+    ),
+    workers = workers,
+    tmpDir = scratchDir,
+    what = "tile",
+    onResult = function(i, res) {
+      id <- todo$id[i]
+      key <- as.character(id)
+      stripeValues[[key]] <<- res$values
+      if (!is.null(res$footprint)) {
+        stripeFootprints[[key]] <<- res$footprint
+      }
+      if (!is.null(progressDir)) {
+        saveTileProgress(progressDir, id, res$values)
+      }
+      have[id] <<- TRUE
+      done <<- done + 1L
+      message("riparian tile ", done, "/", totalTiles, " (tile ", id, ")")
+      writeReadyStripes()
+    }
+  )
   terra::writeStop(writer)
   opened <- FALSE
   if (exportVector) {
@@ -319,6 +409,8 @@ fractionalCoverage <- function(
     }
   )
   completed <- TRUE
+  # Saved tiles are only useful until the final files exist.
+  if (!is.null(progressDir)) unlink(progressDir, recursive = TRUE)
   # Return both the opened raster and the paths consumers need for subsequent use.
   list(
     riparianFraction = result,

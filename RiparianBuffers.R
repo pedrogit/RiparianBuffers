@@ -60,6 +60,28 @@ defineModule(
         )
       ),
       defineParameter(
+        "workers",
+        "numeric",
+        4L,
+        1,
+        NA,
+        paste(
+          "Number of R processes used for the slow steps (fringe assignment and the tile loop).",
+          "1 runs everything in the main process. Each worker needs several GB of memory on large areas."
+        )
+      ),
+      defineParameter(
+        "resume",
+        "logical",
+        TRUE,
+        NA,
+        NA,
+        paste(
+          "Save every finished tile in the scratch folder so a rerun after a failure skips them.",
+          "Not used when exportVectorBuffer is TRUE."
+        )
+      ),
+      defineParameter(
         "exportVectorBuffer",
         "logical",
         TRUE,

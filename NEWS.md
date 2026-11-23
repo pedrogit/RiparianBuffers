@@ -6,6 +6,13 @@
   `jurisdictionMargin_m` (default 100 km) of the study extent is repaired,
   dissolved and used; on the ON/QC 200 km test this cut preparation from 278 s to
   4.8 s with an identical raster.
+- **Parallel processing and resumable tile loop.** New parameter `workers`
+  (default 4) runs the fringe assignment (`assignPiecesToJurisdiction`) and the
+  tile loop in separate R processes (package callr; see `runJobs`). The raster
+  is identical for any number of workers. New parameter `resume` (default TRUE)
+  saves each finished tile under `riparian_progress` in the scratch folder, and a
+  rerun with identical inputs and code skips them. A failing tile is reported by
+  number, row, column and extent. Resuming is off when the vector is exported.
 - **Faster tile loop (about 109 to 59 min on the Eastern Canada area).** Buffers
   are made once per class and width and shared across destinations; buffers
   wholly inside one destination skip the exact clip (`clipToDestination`);

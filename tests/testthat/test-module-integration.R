@@ -151,7 +151,7 @@ testthat::test_that("standalone default grid is 240 m and supplied 1000 m grid w
   testthat::expect_equal(terra::res(sim$PlanningGrid), c(1000, 1000))
 })
 
-testthat::test_that("jurisdictionMargin_m defaults to 100 km and invalid values are rejected", {
+testthat::test_that("module parameters default as documented and invalid values are rejected", {
   mkpaths <- function() list(
     modulePath = dirname(sol_module),
     inputPath = sol_dir("p_in"), outputPath = sol_dir("p_out"),
@@ -165,6 +165,8 @@ testthat::test_that("jurisdictionMargin_m defaults to 100 km and invalid values 
   )
   p <- SpaDES.core::P(defaults, module = "RiparianBuffers")
   testthat::expect_identical(p$jurisdictionMargin_m, 1e5)
+  testthat::expect_identical(as.integer(p$workers), 4L)
+  testthat::expect_true(p$resume)
   for (bad in list(-1, NA_real_, c(1, 2), "a")) {
     sim <- SpaDES.core::simInit(
       times = list(start = 1, end = 1),

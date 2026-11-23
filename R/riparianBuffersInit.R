@@ -76,6 +76,21 @@ riparianBuffersInit <- function(sim) {
   ) {
     stop("jurisdictionMargin_m must be one finite nonnegative number.")
   }
+  workers <- params$workers
+  if (
+    !is.numeric(workers) ||
+      length(workers) != 1L ||
+      is.na(workers) ||
+      workers < 1 ||
+      workers != floor(workers)
+  ) {
+    stop("workers must be one positive integer.")
+  }
+  workers <- as.integer(workers)
+  resume <- params$resume
+  if (!is.logical(resume) || length(resume) != 1L || is.na(resume)) {
+    stop("resume must be one non-missing logical value.")
+  }
   # Isolate all writable products from the original module's files and caches.
   paths <- SpaDES.core::paths(sim)
   input <- SpaDES.core::inputPath(sim)
@@ -100,6 +115,8 @@ riparianBuffersInit <- function(sim) {
     moduleDir = moduleDir,
     reuseDir = input,
     fringeMaxArea_km2 = fringeMax,
+    workers = workers,
+    workDir = scratch,
     jurisdictionMargin_m = margin
   )
   # Create destination directories only after the input contract has been checked.
@@ -116,7 +133,9 @@ riparianBuffersInit <- function(sim) {
     outputDir = output,
     scratchDir = scratch,
     tileCells = as.integer(tile),
-    exportVector = export
+    exportVector = export,
+    workers = workers,
+    resume = resume
   )
   # Prepared copies of the inputs stay local; common input objects are unchanged.
   # Attach scientific conventions and provenance to the raster and export paths.
@@ -146,6 +165,8 @@ riparianBuffersInit <- function(sim) {
       policyAssumption = prepared$policySource,
       projectionConvention = "Areas and widths are planar in the study-area CRS; projection distortion is not corrected",
       tileCells = as.integer(tile),
+      workers = workers,
+      resume = resume,
       exportVectorBuffer = export
     )
   )

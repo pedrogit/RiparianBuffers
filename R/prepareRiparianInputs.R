@@ -338,6 +338,8 @@ prepareRiparianInputs <- function(
   reuseDir = NULL,
   obtainSource = obtainRiparianSource,
   fringeMaxArea_km2 = 0,
+  workers = 1L,
+  workDir = tempdir(),
   jurisdictionMargin_m = 1e5
 ) {
   # Capture original CRS declarations for diagnostics before inputs are copied,
@@ -469,7 +471,9 @@ prepareRiparianInputs <- function(
     resolved$Jurisdiction,
     area,
     l,
-    maxArea_km2 = fringeMaxArea_km2
+    maxArea_km2 = fringeMaxArea_km2,
+    workers = workers,
+    workDir = workDir
   )
   resolved$Jurisdiction <- assigned$Jurisdiction
   if (!is.null(assigned$fringe)) {

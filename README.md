@@ -114,8 +114,10 @@ A jurisdiction with no row uses the `default` row. Each such case is reported in
 |---|---|---|
 | `tileCells` | `128` | Cells per tile side. Larger tiles need more memory. |
 | `fringeMaxArea_km2` | `50` | Uncovered land pieces smaller than this take a neighbouring jurisdiction's policy; a larger one stops the run. `0` turns the step off and keeps a strict check. |
-| `jurisdictionMargin_m` | `100000` | Jurisdictions are cropped to the study extent plus this margin (metres) before repair. Too small a margin makes the coverage check report uncovered land. |
 | `exportVectorBuffer` | `TRUE` | Also write the footprint as a GeoPackage (`riparian_buffers.gpkg`). `FALSE` skips only that file; the raster is unchanged. |
+| `jurisdictionMargin_m` | `100000` | Jurisdictions are cropped to the study extent plus this margin (metres) before repair. Too small a margin makes the coverage check report uncovered land. |
+| `workers` | `4` | Number of R processes used for the fringe assignment and the tile loop. `1` runs everything in the main process. The raster is identical for any value. Each worker holds its own copy of the prepared inputs, so memory grows with the number of workers. |
+| `resume` | `TRUE` | Save each finished tile in the scratch folder so a rerun after a failure skips it. Not used when `exportVectorBuffer` is `TRUE`. |
 
 ### Folders and packages
 
@@ -255,10 +257,18 @@ cached and downloaded files before they are trusted.
 ### Step D: work one tile at a time
 
 The grid can have millions of cells, so it is cut into tiles of `tileCells` x
-`tileCells` cells and processed one after another, keeping only one row of tiles
-in memory. Tiles outside the study area are skipped. A tile still uses features
-that start just outside it, because a nearby stream's buffer reaches into the
-tile.
+`tileCells` cells. Tiles do not depend on each other, so `workers` separate R
+processes compute them at the same time, while the main process writes the
+raster one row of tiles at a time, in order. Tiles outside the study area are
+skipped. A tile still uses features that start just outside it, because a nearby
+stream's buffer reaches into the tile.
+
+If a tile fails, the error names the tile, its row and column and its extent, so
+it can be rerun alone. With `resume = TRUE` each finished tile is also saved in
+`<scratch>/RiparianBuffers/riparian_progress`. Running again with the same
+inputs and code skips those tiles; if anything that affects the result has
+changed, the saved tiles are discarded and the run starts over. The folder is
+deleted once the final files are written.
 
 ![Tiles](docs/fig_tiles.png)
 
@@ -419,11 +429,16 @@ Start with a representative subset when trying new data.
 
 `tileCells` defaults to 128 cells per tile side. Larger tiles can need more
 memory and more complex geometry operations. Before any repair, jurisdictions
-are cropped to the study extent plus `jurisdictionMargin_m` (100 km; a module
-parameter), because the continental layer has millions of vertices and only the
-part near the study area is used. On the ON/QC 200 km test this took preparation
-from 278 s to 4.8 s with an identical raster. A margin that is too small would
-leave an artificial edge that looks like uncovered land, and the run would then
-stop at the coverage check. No parallel processing is enabled.
+are cropped to the study extent plus `jurisdictionMargin_m` (100 km; a module parameter), because the continental layer has millions of
+vertices and only the part near the study area is used. On the ON/QC 200 km test
+this took preparation from 278 s to 4.8 s with an identical raster. A margin that
+is too small would leave an artificial edge that looks like uncovered land, and
+the run would then stop at the coverage check. `workers` (default 4) speeds up the
+fringe assignment and the tile loop, but not the other preparation steps
+(repairing and validating the jurisdictions, and finding the uncovered land),
+which run in the main process. Every worker keeps its own copy of the prepared
+inputs, so check memory before raising it on a large area. With
+`exportVectorBuffer = TRUE` the footprints are written by the main process, in
+tile order, and the run cannot be resumed.
 Per-tile cost is dominated by buffering and clipping near very large lakes and by
 destinations with very detailed boundaries.
