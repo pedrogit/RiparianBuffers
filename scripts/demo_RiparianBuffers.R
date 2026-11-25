@@ -27,7 +27,7 @@ demo_RiparianBuffers <- function(
   if (export_vector && !requireNamespace("sf", quietly = TRUE)) {
     stop("export_vector=TRUE requires sf.")
   }
-  # Keep demonstration inputs, cache, outputs and staging separate from production files.
+  # Keep demonstration inputs, cache, outputs and temporary files separate from production files.
   root <- normalizePath(scratch_path, winslash = "/", mustWork = FALSE)
   paths <- list(
     modulePath = file.path(project_root, "modules"),
@@ -44,7 +44,7 @@ demo_RiparianBuffers <- function(
   }
 
   # EPSG:5070 uses metres. Two jurisdictions meet at x = 500; the stream lies
-  # in ON but must use QC's destination width for its contribution eastward.
+  # in ON, but its buffer east of x = 500 lands in QC and must use QC's width.
   crs <- "EPSG:5070"
   # Convert closed coordinate rings to the SpatVector inputs expected by the module.
   polygon <- function(coords) {
@@ -63,7 +63,7 @@ demo_RiparianBuffers <- function(
     c(0, 1000),
     c(0, 0)
   ))
-  # Split the square into western Ontario and eastern Quebec destination polygons.
+  # Split the square into western Ontario and eastern Quebec jurisdiction polygons.
   jurisdiction <- do.call(
     rbind,
     list(
@@ -78,7 +78,7 @@ demo_RiparianBuffers <- function(
     )
   )
   jurisdiction$jurisdiction_code <- c("ON", "QC")
-  # Use sixteen 250 m planning cells independently of vector buffer precision.
+  # Use sixteen 250 m grid cells independently of vector buffer precision.
   grid <- terra::rast(
     xmin = 0,
     xmax = 1000,

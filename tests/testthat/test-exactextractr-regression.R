@@ -1,5 +1,5 @@
-sol_sf_reference <- function(grid, footprint) {
-  polygons <- sf::st_set_crs(sf::st_geometry(sf::st_as_sf(footprint)), NA)
+sol_sf_reference <- function(grid, lakeBufferArea) {
+  polygons <- sf::st_set_crs(sf::st_geometry(sf::st_as_sf(lakeBufferArea)), NA)
   e <- unname(as.vector(terra::ext(grid)))
   cells <- sf::st_make_grid(
     sf::st_as_sfc(sf::st_bbox(c(xmin = e[1], ymin = e[3], xmax = e[2], ymax = e[4]))),
@@ -49,16 +49,16 @@ testthat::test_that("disjoint features in one cell are summed, overlap is not co
   testthat::expect_error(exactTileFractions(grid, rbind(sol_rect(), sol_rect())), "outside")
 })
 
-testthat::test_that("precomputed tile geometry preserves footprint and empty behavior", {
+testthat::test_that("precomputed tile geometry preserves the lake-and-buffer area and empty behavior", {
   f <- sol_prepared(sol_fixture(20, lake = TRUE))
   tile <- terra::as.polygons(terra::ext(f$PlanningGrid), crs = terra::crs(f$PlanningGrid))
-  args <- list(tileCore = tile, studyArea = f$studyArea, Jurisdiction = f$Jurisdiction,
+  args <- list(tileBox = tile, studyArea = f$studyArea, Jurisdiction = f$Jurisdiction,
                policy = f$policy, streams = f$streams, lakes = f$lakes)
-  baseline <- do.call(buildPolicyFootprints, args)
-  reused <- do.call(buildPolicyFootprints, c(args, list(
-    core = intersectPolygons(tile, f$studyArea), maxWidth = f$haloWidth_m)))
+  baseline <- do.call(buildLakeBufferArea, args)
+  reused <- do.call(buildLakeBufferArea, c(args, list(
+    tileInStudy = intersectPolygons(tile, f$studyArea), maxWidth = f$marginWidth_m)))
   testthat::expect_identical(terra::geom(reused), terra::geom(baseline))
-  testthat::expect_null(do.call(buildPolicyFootprints, c(args, list(core = NULL))))
+  testthat::expect_null(do.call(buildLakeBufferArea, c(args, list(tileInStudy = NULL))))
 })
 
 testthat::test_that("shared archive validation recognizes complete and incomplete sources", {

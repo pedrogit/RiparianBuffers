@@ -1,10 +1,10 @@
-#' Compute one tile: exact coverage values and, optionally, its footprint
+#' Compute one tile: exact coverage values and, optionally, its lake-and-buffer area
 #'
 #' One unit of work for `fractionalCoverage`. `job` gives the tile (`id`, first
 #' `row` and `col`, size `nrows` x `ncols`); `ctx` holds the prepared layers and
-#' grid description. Returns list(values, footprint): a `nrows` x `ncols` matrix
-#' (NA outside the study area) and the tile's footprint as a packed vector (NULL
-#' when there is none or when `ctx$exportVector` is FALSE). Any error is
+#' grid description. Returns list(values, lakeBufferArea): a `nrows` x `ncols`
+#' matrix (NA outside the study area) and the tile's lake-and-buffer area as a
+#' packed vector (NULL when there is none or when `ctx$exportVector` is FALSE). Any error is
 #' re-raised with the tile number, position and extent so the failing tile can
 #' be found and re-run alone.
 processTile <- function(ctx, job) {
@@ -23,28 +23,28 @@ processTile <- function(ctx, job) {
         extent = ex,
         crs = ctx$crs
       )
-      # Convert the tile rectangle to a polygon for destination and footprint clipping.
-      core <- terra::as.polygons(ex, crs = ctx$crs)
-      studyCore <- intersectPolygons(core, ctx$studyArea)
+      # Convert the tile rectangle to a polygon, to clip it to the study area.
+      tileBox <- terra::as.polygons(ex, crs = ctx$crs)
+      tileInStudy <- intersectPolygons(tileBox, ctx$studyArea)
       values <- matrix(NA_real_, nrow = job$nrows, ncol = job$ncols)
-      footprint <- NULL
-      if (!is.null(studyCore)) {
-        # Build destination-policy buffers only where this tile intersects the study area.
-        footprint <- buildPolicyFootprints(
-          core,
+      lakeBufferArea <- NULL
+      if (!is.null(tileInStudy)) {
+        # Build the buffers only where this tile intersects the study area.
+        lakeBufferArea <- buildLakeBufferArea(
+          tileBox,
           ctx$studyArea,
           ctx$Jurisdiction,
           ctx$policy,
           ctx$streams,
           ctx$lakes,
-          core = studyCore,
+          tileInStudy = tileInStudy,
           maxWidth = ctx$maxWidth
         )
-        fractions <- exactTileFractions(template, footprint)
+        fractions <- exactTileFractions(template, lakeBufferArea)
         # Mark cells outside the study area as NoData, even if a buffer reaches them.
         inStudy <- exactTileFractions(
           template,
-          unionPolygons(list(studyCore))
+          unionPolygons(list(tileInStudy))
         ) >
           0
         fractions[!inStudy] <- NA_real_
@@ -57,8 +57,8 @@ processTile <- function(ctx, job) {
       }
       list(
         values = values,
-        footprint = if (isTRUE(ctx$exportVector) && !is.null(footprint)) {
-          terra::wrap(footprint)
+        lakeBufferArea = if (isTRUE(ctx$exportVector) && !is.null(lakeBufferArea)) {
+          terra::wrap(lakeBufferArea)
         }
       )
     },

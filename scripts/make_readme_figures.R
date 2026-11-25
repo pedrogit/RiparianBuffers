@@ -12,7 +12,7 @@ make_readme_figures <- function(moduleDir) {
 
   col <- c(
     lake = "#BFD7EA", lakeLine = "#2E6F9E", stream = "#1F5C99",
-    buffer = "#F2B880", bufferLine = "#C77B2B", foot = "#E8A33D",
+    buffer = "#F2B880", bufferLine = "#C77B2B", lbArea = "#E8A33D",
     A = "#9CCBA8", B = "#C7B6E8", Adark = "#4C9A62", Bdark = "#7A5CC0",
     gap = "#D64545", grey = "grey80", greyLine = "grey55", study = "grey25"
   )
@@ -61,10 +61,10 @@ make_readme_figures <- function(moduleDir) {
   w <- 5
   lakeBuf <- buf(lake, w)
   streamBuf <- buf(stream, w)
-  foot <- st_union(c(lake, lakeBuf, streamBuf))
+  lbArea <- st_union(c(lake, lakeBuf, streamBuf))
   grid <- st_make_grid(st_bbox(c(xmin = 0, ymin = 0, xmax = 100, ymax = 60)), cellsize = 20)
   frac <- vapply(seq_along(grid), function(i) {
-    x <- inter(grid[i], foot)
+    x <- inter(grid[i], lbArea)
     if (!length(x)) 0 else sum(area(x)) / area(grid[i])
   }, 1)
   ctr <- st_coordinates(st_centroid(grid))
@@ -75,9 +75,9 @@ make_readme_figures <- function(moduleDir) {
     geom_sf(data = rbind(L(lakeBuf, p[2]), L(streamBuf, p[2])), fill = col["buffer"], colour = col["bufferLine"], alpha = 0.6) +
     geom_sf(data = L(lake, p[2]), fill = col["lake"], colour = col["lakeLine"]) +
     geom_sf(data = L(stream, p[2]), colour = col["stream"], linewidth = 0.9) +
-    geom_sf(data = L(foot, p[3]), fill = col["foot"], colour = col["bufferLine"]) +
+    geom_sf(data = L(lbArea, p[3]), fill = col["lbArea"], colour = col["bufferLine"]) +
     geom_sf(data = LP(grid, p[4]), fill = NA, colour = "grey55", linewidth = 0.3) +
-    geom_sf(data = L(foot, p[4]), fill = col["foot"], colour = NA, alpha = 0.8) +
+    geom_sf(data = L(lbArea, p[4]), fill = col["lbArea"], colour = NA, alpha = 0.8) +
     labb(txt(ctr[, 1], ctr[, 2], ifelse(frac > 0, sprintf("%.2f", frac), ""), p[4]), size = 3) +
     labb(txt(c(22, 66), c(28, 14), c("stream buffer", "lake + its buffer"), p[2]), size = 2.7) +
     facet_wrap(vars(panel), nrow = 1) +
@@ -86,22 +86,22 @@ make_readme_figures <- function(moduleDir) {
   save(g1, "fig_coverage.png", 11, 2.9)
 
   # =============================================================================
-  # 2. The halo
+  # 2. The margin
   # =============================================================================
   study <- st_sfc(poly(rbind(c(30, 20), c(55, 12), c(85, 22), c(92, 45), c(70, 62), c(40, 58), c(24, 40))))
   bb <- st_bbox(study)
   wd <- 12
   bbPoly <- st_sfc(box(bb[1], bb[2], bb[3], bb[4]))
-  halo <- st_sfc(box(bb[1] - wd, bb[2] - wd, bb[3] + wd, bb[4] + wd))
+  marginBox <- st_sfc(box(bb[1] - wd, bb[2] - wd, bb[3] + wd, bb[4] + wd))
   lakes <- c(st_sfc(circ(55, 38, 6)), st_sfc(circ(103, 40, 8)), st_sfc(circ(128, 14, 7)), st_sfc(circ(18, 8, 4)))
   streams <- c(
     st_sfc(st_linestring(rbind(c(72, 38), c(92, 46), c(112, 55)))),
     st_sfc(st_linestring(rbind(c(4, 80), c(30, 88), c(50, 96))))
   )
-  lakeSel <- lengths(st_intersects(lakes, halo)) > 0
-  strSel <- lengths(st_intersects(streams, halo)) > 0
+  lakeSel <- lengths(st_intersects(lakes, marginBox)) > 0
+  strSel <- lengths(st_intersects(streams, marginBox)) > 0
   g2 <- ggplot() +
-    geom_sf(data = L(halo, "h"), fill = "#FFF4E0", colour = col["bufferLine"], linetype = "dashed") +
+    geom_sf(data = L(marginBox, "h"), fill = "#FFF4E0", colour = col["bufferLine"], linetype = "dashed") +
     geom_sf(data = L(bbPoly, "h"), fill = NA, colour = "grey50", linetype = "dotted") +
     geom_sf(data = L(study, "h"), fill = "grey92", colour = col["study"], linewidth = 0.7) +
     geom_sf(data = L(lakes[!lakeSel], "h"), fill = col["grey"], colour = col["greyLine"]) +
@@ -110,15 +110,15 @@ make_readme_figures <- function(moduleDir) {
     geom_sf(data = L(streams[strSel], "h"), colour = col["stream"], linewidth = 0.9) +
     labb(txt(
       c(40, 76, 58, 114, 128, 22), c(49, 7, 69, 63, 3, 98),
-      c("study area", "bounding box (dotted)", "halo (dashed) = bounding box grown\nby the widest buffer width",
-        "kept whole,\nnot cut at the halo", "too far:\nnot used", "too far: not used"), "h"
+      c("study area", "bounding box (dotted)", "margin (dashed) = bounding box grown\nby the widest buffer width",
+        "kept whole,\nnot trimmed at the margin", "too far:\nnot used", "too far: not used"), "h"
     ), size = 2.9) +
     coord_sf(xlim = c(0, 138), ylim = c(0, 100), expand = FALSE) +
     theme_fig()
-  save(g2, "fig_halo.png", 6.5, 4.6)
+  save(g2, "fig_margin.png", 6.5, 4.6)
 
   # =============================================================================
-  # 3. Destination policy: the width depends on where the buffer lands
+  # 3. Width by jurisdiction: the width depends on where the buffer lands
   # =============================================================================
   A <- st_sfc(box(0, 0, 50, 60))
   B <- st_sfc(box(50, 0, 100, 60))
@@ -144,7 +144,7 @@ make_readme_figures <- function(moduleDir) {
     facet_wrap(vars(panel), nrow = 1) +
     coord_sf(xlim = c(0, 100), ylim = c(0, 60), expand = FALSE) +
     theme_fig()
-  save(g3, "fig_destination.png", 9, 3.4)
+  save(g3, "fig_jurisdiction_width.png", 9, 3.4)
 
   # =============================================================================
   # 4. Fringes: small gaps take a neighbour's policy, large holes stop the run
@@ -201,7 +201,7 @@ make_readme_figures <- function(moduleDir) {
   chosen <- st_sfc(box(30, 30, 60, 60))
   str5 <- st_sfc(st_linestring(rbind(c(24, 32), c(27, 42), c(26, 52), c(29, 62), c(36, 68))))
   lake5 <- st_sfc(circ(48, 62, 5))
-  foot5 <- st_union(c(buf(str5, 6), buf(lake5, 6), lake5))
+  area5 <- st_union(c(buf(str5, 6), buf(lake5, 6), lake5))
   cells5 <- st_make_grid(st_bbox(c(xmin = 30, ymin = 30, xmax = 60, ymax = 60)), cellsize = 5)
   # Two separate plots (the second is zoomed) placed side by side with grid.
   ttl <- theme(plot.title = element_text(face = "bold", size = 9.5, hjust = 0))
@@ -212,11 +212,11 @@ make_readme_figures <- function(moduleDir) {
     geom_sf(data = L(chosen, "a"), fill = NA, colour = col["bufferLine"], linewidth = 1.3) +
     labb(txt(c(45, 14), c(45, 8), c("the tile\nin panel 2", "grey tiles: outside the\nstudy area, skipped"), "a"), size = 2.8) +
     coord_sf(xlim = c(0, 120), ylim = c(0, 90), expand = FALSE) +
-    labs(title = "1. The grid is cut into tiles") +
+    labs(title = "1. The grid is split into tiles") +
     theme_fig() + ttl
   gB <- ggplot() +
-    geom_sf(data = L(foot5, "b"), fill = col["foot"], colour = NA, alpha = 0.3) +
-    geom_sf(data = L(inter(foot5, chosen), "b"), fill = col["foot"], colour = NA, alpha = 0.9) +
+    geom_sf(data = L(area5, "b"), fill = col["lbArea"], colour = NA, alpha = 0.3) +
+    geom_sf(data = L(inter(area5, chosen), "b"), fill = col["lbArea"], colour = NA, alpha = 0.9) +
     geom_sf(data = L(cells5, "b"), fill = NA, colour = "grey60", linewidth = 0.25) +
     geom_sf(data = L(chosen, "b"), fill = NA, colour = col["bufferLine"], linewidth = 1.3) +
     geom_sf(data = L(lake5, "b"), fill = col["lake"], colour = col["lakeLine"]) +
@@ -234,20 +234,20 @@ make_readme_figures <- function(moduleDir) {
   g5 <- list(gA, gB)
 
   # =============================================================================
-  # 6. Inside one tile: select, cut, buffer once, clip
+  # 6. Inside one tile: select, trim, buffer once, clip
   # =============================================================================
   w6 <- 5
   D <- st_sfc(poly(rbind(c(20, 20), c(60, 20), c(60, 45), c(45, 60), c(20, 60))))
   grown <- st_sfc(box(20 - w6, 20 - w6, 60 + w6, 60 + w6))
-  cutbox <- st_sfc(box(20 - 2 * w6, 20 - 2 * w6, 60 + 2 * w6, 60 + 2 * w6))
+  trimBox <- st_sfc(box(20 - 2 * w6, 20 - 2 * w6, 60 + 2 * w6, 60 + 2 * w6))
   big <- st_sfc(poly(rbind(c(-30, -20), c(140, -20), c(140, 32), c(100, 26), c(70, 30), c(30, 28), c(0, 34), c(-30, 30))))
   smalls <- c(st_sfc(circ(35, 50, 3)), st_sfc(circ(55, 53, 3)), st_sfc(circ(67, 38, 3)), st_sfc(circ(100, 78, 4)), st_sfc(circ(4, 72, 4)))
   lakes6 <- c(big, smalls)
   sel6 <- lengths(st_intersects(lakes6, grown)) > 0
-  bigCut <- inter(big, cutbox)
-  used <- c(bigCut, smalls[sel6[-1]])
+  bigTrimmed <- inter(big, trimBox)
+  used <- c(bigTrimmed, smalls[sel6[-1]])
   bufs <- lapply(seq_along(used), function(i) buf(used[i], w6))
-  p6 <- c("1. Select", "2. Cut", "3. Buffer once", "4. Clip")
+  p6 <- c("1. Select", "2. Trim", "3. Buffer once", "4. Clip")
   keep <- list(); drop <- list(); cross <- list()
   for (b in bufs) {
     if (isTRUE(st_within(b, D, sparse = FALSE)[1, 1])) {
@@ -264,10 +264,10 @@ make_readme_figures <- function(moduleDir) {
     geom_sf(data = L(grown, p6[1]), fill = NA, colour = col["bufferLine"], linetype = "dashed") +
     geom_sf(data = L(lakes6[!sel6], p6[1]), fill = col["grey"], colour = col["greyLine"]) +
     geom_sf(data = L(lakes6[sel6], p6[1]), fill = col["lake"], colour = col["lakeLine"]) +
-    # 2. cut
+    # 2. trim
     geom_sf(data = L(big, p6[2]), fill = NA, colour = col["greyLine"], linetype = "dotted") +
-    geom_sf(data = L(cutbox, p6[2]), fill = NA, colour = col["gap"], linetype = "dashed") +
-    geom_sf(data = L(bigCut, p6[2]), fill = col["lake"], colour = col["lakeLine"]) +
+    geom_sf(data = L(trimBox, p6[2]), fill = NA, colour = col["gap"], linetype = "dashed") +
+    geom_sf(data = L(bigTrimmed, p6[2]), fill = col["lake"], colour = col["lakeLine"]) +
     geom_sf(data = L(smalls[sel6[-1]], p6[2]), fill = col["lake"], colour = col["lakeLine"]) +
     geom_sf(data = L(circ(20, 20, w6), p6[2]), fill = NA, colour = "grey20", linetype = "dashed") +
     # 3. buffer once
@@ -276,12 +276,12 @@ make_readme_figures <- function(moduleDir) {
     # 4. clip
     geom_sf(data = L(cmb(drop), p6[4]), fill = col["grey"], colour = col["greyLine"]) +
     geom_sf(data = L(cmb(keep), p6[4]), fill = "#8DC26F", colour = "grey30") +
-    geom_sf(data = L(cmb(cross), p6[4]), fill = col["foot"], colour = "grey30") +
+    geom_sf(data = L(cmb(cross), p6[4]), fill = col["lbArea"], colour = "grey30") +
     geom_sf(data = L(D, p6[4]), fill = NA, colour = "grey20", linewidth = 0.6) +
-    labb(txt(c(40, 40, 30), c(74, 76, 11), c("dashed: destination box\ngrown by one width",
-         "red dashed: cut edge,\ntwo widths out", "reach of one width"), c(p6[1], p6[2], p6[2])), size = 2.5) +
+    labb(txt(c(40, 40, 30), c(74, 76, 11), c("dashed: jurisdiction box\ngrown by one width",
+         "red dashed: trim edge,\ntwo widths out", "reach of one width"), c(p6[1], p6[2], p6[2])), size = 2.5) +
     labb(txt(88, 74, "kept as is", p6[4]), size = 2.6, colour = "#3E7D1F") +
-    labb(txt(88, 67, "exact clip", p6[4]), size = 2.6, colour = col["bufferLine"]) +
+    labb(txt(88, 67, "precise clip", p6[4]), size = 2.6, colour = col["bufferLine"]) +
     labb(txt(88, 60, "dropped", p6[4]), size = 2.6, colour = "grey35") +
     facet_wrap(vars(panel), nrow = 1) +
     coord_sf(xlim = c(-8, 108), ylim = c(-8, 82), expand = FALSE) +
@@ -295,12 +295,12 @@ make_readme_figures <- function(moduleDir) {
   grid7 <- st_make_grid(st_bbox(c(xmin = 0, ymin = 0, xmax = 100, ymax = 80)), cellsize = 20)
   lake7 <- st_sfc(circ(78, 44, 7))
   str7 <- st_sfc(st_linestring(rbind(c(8, 70), c(30, 62), c(50, 66), c(70, 52))))
-  foot7 <- st_union(c(lake7, buf(lake7, 5), buf(str7, 5)))
-  foot7s <- inter(foot7, study7)
+  area7 <- st_union(c(lake7, buf(lake7, 5), buf(str7, 5)))
+  area7s <- inter(area7, study7)
   val7 <- vapply(seq_along(grid7), function(i) {
     inStudy <- length(inter(grid7[i], study7)) > 0 && sum(area(inter(grid7[i], study7))) > 0
     if (!inStudy) return(NA_real_)
-    x <- inter(grid7[i], foot7s)
+    x <- inter(grid7[i], area7s)
     if (!length(x)) 0 else sum(area(x)) / area(grid7[i])
   }, 1)
   c7 <- st_coordinates(st_centroid(grid7))
@@ -308,8 +308,8 @@ make_readme_figures <- function(moduleDir) {
   g7 <- ggplot() +
     geom_sf(data = L(grid7[is.na(val7)], "x"), fill = "grey88", colour = "grey60", linewidth = 0.3) +
     geom_sf(data = L(study7, "x"), fill = "#F4F8FC", colour = col["study"], linewidth = 0.8) +
-    geom_sf(data = L(foot7, "x"), fill = col["foot"], colour = NA, alpha = 0.25) +
-    geom_sf(data = L(foot7s, "x"), fill = col["foot"], colour = NA, alpha = 0.85) +
+    geom_sf(data = L(area7, "x"), fill = col["lbArea"], colour = NA, alpha = 0.25) +
+    geom_sf(data = L(area7s, "x"), fill = col["lbArea"], colour = NA, alpha = 0.85) +
     geom_sf(data = L(grid7, "x"), fill = NA, colour = "grey55", linewidth = 0.3) +
     geom_sf(data = L(lake7, "x"), fill = col["lake"], colour = col["lakeLine"]) +
     geom_sf(data = L(str7, "x"), colour = col["stream"], linewidth = 0.8) +

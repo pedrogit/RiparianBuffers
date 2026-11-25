@@ -104,7 +104,7 @@ testthat::test_that("actual simInit/spades produces isolated result and the vect
   testthat::expect_identical(r$lakeInteriorsExcluded, FALSE)
   testthat::expect_identical(r$exportVectorBuffer, TRUE)
   testthat::expect_null(r$raster_m)
-  testthat::expect_match(r$coverageConvention, "FULL planning-cell")
+  testthat::expect_match(r$coverageConvention, "FULL grid-cell")
   testthat::expect_equal(
     terra::compareGeom(r$riparianFraction, objects$PlanningGrid),
     TRUE
@@ -118,7 +118,7 @@ testthat::test_that("actual simInit/spades produces isolated result and the vect
     testthat::expect_identical(sol_signature(sim[[name]]), before[[name]])
   }
   # The only object this module adds is Riparian. Prepared copies of the
-  # inputs stay local and are not published under any name.
+  # inputs stay local and are not written under any name.
   testthat::expect_true("Riparian" %in% names(sim))
   testthat::expect_setequal(
     setdiff(ls(sim), names(objects)),

@@ -1,12 +1,12 @@
 ## Functions in R/ are module-scoped by SpaDES; shared inputs are read-only.
-# Register the scientific contract and dependencies used by SpaDES validation.
+# Register the scientific rules and dependencies used by SpaDES validation.
 defineModule(
   sim,
   list(
     name = "RiparianBuffers",
     description = paste(
-      "Exact destination-jurisdiction combined lake-and-riparian-buffer coverage.",
-      "Mapped lake interiors are included; the denominator is full planning-cell area.",
+      "Exact combined lake-and-riparian-buffer coverage, using the width of the jurisdiction each buffer lands in.",
+      "Mapped lake interiors are included; the denominator is the full grid-cell area.",
       "Outside-study cells are NA. This is not a classification of harvestable land."
     ),
     keywords = c("hydrology", "riparian", "exact coverage"),
@@ -34,7 +34,7 @@ defineModule(
         128L,
         1,
         NA,
-        "Positive integer number of planning cells on each tile side."
+        "Positive integer number of grid cells on each tile side."
       ),
       defineParameter(
         "fringeMaxArea_km2",
@@ -56,7 +56,7 @@ defineModule(
         paste(
           "Jurisdictions are cropped to the study extent plus this margin (metres) before repair,",
           "which makes continental layers much faster. Too small a margin leaves an artificial edge",
-          "that the coverage check reports as uncovered land."
+          "that the jurisdiction check reports as uncovered land."
         )
       ),
       defineParameter(
@@ -66,7 +66,7 @@ defineModule(
         1,
         NA,
         paste(
-          "Number of R processes used for the slow steps (fringe assignment and the tile loop).",
+          "Number of R processes used for the slow steps (fringe assignment and processing the tiles).",
           "1 runs everything in the main process. Each worker needs several GB of memory on large areas."
         )
       ),
@@ -87,7 +87,7 @@ defineModule(
         FALSE,
         NA,
         NA,
-        "Also export the final combined lake-and-buffer footprint as GeoPackage alongside GeoTIFF. TRUE disables resume (tile footprints are not saved)."
+        "Also export the final combined lake-and-buffer area as GeoPackage alongside GeoTIFF. TRUE disables resume (the tile areas are not saved)."
       )
     ),
     # Declare shared inputs without claiming ownership of upstream data products.
@@ -100,12 +100,12 @@ defineModule(
       expectsInput(
         "PlanningGrid",
         "SpatRaster",
-        "Read-only common grid; 240 m standalone fallback only if not supplied or promised upstream."
+        "Read-only target reference raster (the common grid); 240 m standalone fallback only if not supplied or promised upstream."
       ),
       expectsInput(
         "Jurisdiction",
         c("SpatVector", "sf"),
-        "Optional receiving-jurisdiction polygons; downloaded when missing."
+        "Optional jurisdiction polygons; downloaded when missing."
       ),
       expectsInput(
         "riparianBufferPolicy",
@@ -115,15 +115,15 @@ defineModule(
       expectsInput(
         "Hydrology_streams",
         c("SpatVector", "sf"),
-        "Optional halo-complete streams with ORD_STRA or validated hydro_class; North American HydroRIVERS when missing."
+        "Optional streams covering the whole margin, with ORD_STRA or validated hydro_class; North American HydroRIVERS when missing."
       ),
       expectsInput(
         "Hydrology_lakes",
         c("SpatVector", "sf"),
-        "Optional halo-complete lakes with Lake_area (km2) or validated hydro_class; global HydroLAKES when missing."
+        "Optional lakes covering the whole margin, with Lake_area (km2) or validated hydro_class; global HydroLAKES when missing."
       )
     ),
-    # Publish one suffixed output so both riparian implementations can coexist.
+    # The only output is `Riparian`.
     outputObjects = bindrows(
       createsOutput(
         "Riparian",

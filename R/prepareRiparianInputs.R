@@ -6,7 +6,7 @@
 #' relies on (`field`) and the expected geometry type. Stops for any other name.
 riparianSource <- function(dataset) {
   # Map each supported dataset to its immutable distribution metadata and the
-  # attribute/geometry contract expected after extraction.
+  # attribute/geometry rules expected after extraction.
   switch(
     dataset,
     streams = list(
@@ -37,7 +37,7 @@ riparianSource <- function(dataset) {
   )
 }
 
-#' Check that a cached shapefile is complete and matches its source contract
+#' Check that a cached shapefile is complete and matches its source rules
 #'
 #' Requires non-empty .shp, .shx, .dbf and .prj files, a declared CRS, the
 #' source's key attribute and the expected geometry type. Only the header is
@@ -199,12 +199,12 @@ obtainRiparianSource <- function(
         if (!identical(as.integer(status), 0L) || !file.exists(partial)) {
           stop("Download did not complete: ", partial)
         }
-        # Verify ZIP contents before atomically publishing the completed file.
+        # Verify ZIP contents before moving the completed file into the cache.
         contents <- utils::unzip(partial, list = TRUE)
         problem <- zipShapefileProblem(contents, source, partial)
         if (!is.null(problem)) stop(problem)
         if (!file.rename(partial, archive)) {
-          stop("Cannot publish completed archive: ", archive)
+          stop("Cannot move completed archive into the cache: ", archive)
         }
         archiveToUse <- archive
       }
@@ -227,12 +227,12 @@ obtainRiparianSource <- function(
         recursive = TRUE,
         full.names = TRUE
       )
-      # The source contract permits exactly one main shapefile after extraction.
+      # The source rules permit exactly one main shapefile after extraction.
       shape <- shapes[basename(shapes) == source$shape]
       if (length(shape) != 1L) {
         stop("Expected exactly one ", source$shape, " in ", extraction)
       }
-      # Confirm the extracted vector itself still meets the source contract.
+      # Confirm the extracted vector itself still meets the source rules.
       validateShapefile(shape, source)
       # Record provenance and the uncropped status required for future reuse.
       saveRDS(
@@ -258,28 +258,28 @@ obtainRiparianSource <- function(
   )
 }
 
-#' Read the source features that fall inside the study-area halo
+#' Read the source features that fall inside the study-area margin
 #'
-#' `raw` is the list from `obtainRiparianSource`, `halo` a polygon in the
-#' working CRS, `targetCRS` the working projection. The halo is converted to the
-#' file's own CRS (with extra vertices and a small margin so curved projections
-#' cannot cut it short) and used as a coarse filter, so only nearby features are
+#' `raw` is the list from `obtainRiparianSource`, `marginBox` a polygon in the
+#' working CRS, `targetCRS` the working projection. The margin is converted to the
+#' file's own CRS (with extra vertices and a small extra allowance so curved
+#' projections cannot shorten it) and used as a coarse filter, so only nearby features are
 #' read from a very large file. Features are kept whole; they are then validated,
 #' repaired if needed and projected to `targetCRS`.
-readRiparianHalo <- function(raw, halo, targetCRS, cropTo = NULL) {
+readRiparianMargin <- function(raw, marginBox, targetCRS, cropTo = NULL) {
   # OGR spatial filter selects WHOLE source features; do not crop shorelines/endpoints.
   header <- terra::vect(raw$path, proxy = TRUE)
   # Densify projected envelope edges before transforming: four corners alone can
   # underestimate its extent under curved transformations. Use a conservative
   # native-CRS bounding box; final selection occurs in the working projection.
   interval <- max(
-    diff(as.vector(terra::ext(halo))[1:2]),
-    diff(as.vector(terra::ext(halo))[3:4])
+    diff(as.vector(terra::ext(marginBox))[1:2]),
+    diff(as.vector(terra::ext(marginBox))[3:4])
   ) /
     256
-  # Add vertices along the projected halo before CRS transformation so curved
+  # Add vertices along the projected margin before CRS transformation so curved
   # edges are represented conservatively in the source coordinate system.
-  dense <- terra::densify(terra::deepcopy(halo), interval = interval)
+  dense <- terra::densify(terra::deepcopy(marginBox), interval = interval)
   native <- terra::project(dense, terra::crs(header))
   nativeExt <- terra::ext(native)
   # Pad by one densification interval to protect against transformation and
@@ -300,32 +300,32 @@ readRiparianHalo <- function(raw, halo, targetCRS, cropTo = NULL) {
   validateVector(v, raw$source$name, raw$source$type, targetCRS, cropTo)
 }
 
-#' Precise halo selection in the working CRS
+#' Precise margin selection in the working CRS
 #'
-#' Second, exact step after the coarse filter in `readRiparianHalo` (and also
+#' Second, precise step after the coarse filter in `readRiparianMargin` (and also
 #' applied to user-supplied layers): keeps the whole features of `x` that
-#' intersect `halo`. An empty `x` is returned unchanged.
-selectRiparianHalo <- function(x, halo) {
+#' intersect the margin (`marginBox`). An empty `x` is returned unchanged.
+selectRiparianMargin <- function(x, marginBox) {
   # Preserve an explicitly supplied empty vector without calling spatial
   # predicates that may not support zero features.
   if (!nrow(x)) {
     return(x)
   }
   # Keep whole features that intersect the buffered study envelope.
-  index <- which(as.vector(terra::relate(x, halo, "intersects")))
+  index <- which(as.vector(terra::relate(x, marginBox, "intersects")))
   x[index, ]
 }
 
-#' Validate and prepare every input the footprint builder needs
+#' Validate and prepare every input the lake-and-buffer builder needs
 #'
-#' The stage-2 "preparation" step. Validates the study area and planning grid,
-#' loads the policy table (bundled default when none is supplied), computes the
-#' halo from the widest buffer, then obtains or validates jurisdictions, streams
+#' The stage-2 "preparation" step. Validates the study area and the target
+#' reference raster, loads the policy table (bundled default when none is supplied), computes the
+#' margin from the widest buffer, then obtains or validates jurisdictions, streams
 #' and lakes (downloading only what was not supplied). It then resolves a policy
 #' for each jurisdiction, assigns small uncovered fringes to a neighbouring
 #' jurisdiction (`fringeMaxArea_km2`, 0 = strict) and checks jurisdiction
 #' coverage. Returns the prepared layers plus audit information: CRS, repairs,
-#' sources, policy fallbacks, halo and fringe summary.
+#' sources, policy fallbacks, margin and fringe summary.
 prepareRiparianInputs <- function(
   studyArea,
   PlanningGrid,
@@ -386,22 +386,22 @@ prepareRiparianInputs <- function(
   dummy <- terra::deepcopy(area)
   dummy$jurisdiction_code <- rep("default", nrow(dummy))
   checked <- resolveRiparianPolicy(policy, dummy)$policy
-  # The largest class-specific width defines a conservative metre-based halo
-  # around the study extent for all hydrologic input reads.
-  haloWidth <- max(as.matrix(checked[, c(
+  # The largest class-specific width defines a conservative metre-based margin
+  # around the study extent for all stream and lake reads.
+  marginWidth <- max(as.matrix(checked[, c(
     "small_stream",
     "large_stream",
     "small_lake",
     "large_lake"
   )]))
   box <- terra::ext(area)
-  # Construct the rectangular halo in the PlanningGrid CRS and metre units.
-  halo <- terra::as.polygons(
+  # Construct the rectangular margin in the PlanningGrid CRS and metre units.
+  marginBox <- terra::as.polygons(
     terra::ext(
-      box[1] - haloWidth,
-      box[2] + haloWidth,
-      box[3] - haloWidth,
-      box[4] + haloWidth
+      box[1] - marginWidth,
+      box[2] + marginWidth,
+      box[3] - marginWidth,
+      box[4] + marginWidth
     ),
     crs = target
   )
@@ -411,16 +411,16 @@ prepareRiparianInputs <- function(
   # projected whole-feature layer for one required input dataset.
   prepare <- function(x, dataset, type, cropTo = NULL) {
     if (is.null(x)) {
-      # Obtain raw global/continental data, then read only halo candidates.
+      # Obtain raw global/continental data, then read only candidates inside the margin.
       raw <- obtainSource(dataset, cacheDir, reuseDir)
       sourceCRS[[dataset]] <<- terra::crs(terra::vect(raw$path, proxy = TRUE))
-      prepared <- readRiparianHalo(raw, halo, target, cropTo)
+      prepared <- readRiparianMargin(raw, marginBox, target, cropTo)
       provenance[[dataset]] <<- list(
         origin = raw$source$name,
         url = raw$source$url,
         rawFile = raw$path,
         cacheReused = raw$reused,
-        coverage = "raw source spatially filtered to halo; source mapping completeness not guaranteed"
+        coverage = "raw source spatially filtered to the margin; source mapping completeness not guaranteed"
       )
     } else {
       # Caller-supplied data remain read-only: validation operates on a copy.
@@ -436,7 +436,7 @@ prepareRiparianInputs <- function(
       )
       provenance[[dataset]] <<- list(
         origin = "supplied read-only input",
-        coverage = "unknown; complete halo coverage cannot be guaranteed from feature extents alone"
+        coverage = "unknown; complete margin coverage cannot be guaranteed from feature extents alone"
       )
     }
     # Record any local geometry repairs performed during validation.
@@ -446,10 +446,10 @@ prepareRiparianInputs <- function(
       # Assign the two policy classes from source attributes or supplied class.
       v <- classifyHydrology(v, dataset)
     }
-    # Apply the exact working-CRS halo predicate after any coarse source filter.
-    selectRiparianHalo(v, halo)
+    # Apply the precise working-CRS margin test after any coarse source filter.
+    selectRiparianMargin(v, marginBox)
   }
-  # Jurisdictions establish applicable policy before hydrology is prepared.
+  # Jurisdictions establish applicable policy before streams and lakes are prepared.
   # Only jurisdiction land near the study area matters; a wide margin keeps
   # artificial crop edges far from every uncovered piece.
   b <- as.vector(terra::ext(area))
@@ -516,8 +516,8 @@ prepareRiparianInputs <- function(
     sourceCRS = sourceCRS,
     repairs = repairs,
     sources = provenance,
-    haloWidth_m = haloWidth,
-    haloExtent = as.vector(terra::ext(halo)),
+    marginWidth_m = marginWidth,
+    marginExtent = as.vector(terra::ext(marginBox)),
     policySource = policySource,
     fringeAssigned = assigned$fringe
   )

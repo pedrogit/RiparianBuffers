@@ -44,7 +44,7 @@ testthat::test_that("lake interiors, shoreline buffers and overlaps count once",
   testthat::expect_equal(sol_vals(sol_run(sol_prepared(f))$riparianFraction), 1)
 })
 
-testthat::test_that("receiving policy and halo features cross jurisdiction and study borders", {
+testthat::test_that("receiving policy and margin features cross jurisdiction and study borders", {
   f <- sol_fixture()
   f$Jurisdiction <- rbind(sol_rect(0, 50), sol_rect(50, 100))
   f$Jurisdiction$jurisdiction_code <- c("ON", "QC")
@@ -66,7 +66,7 @@ testthat::test_that("receiving policy and halo features cross jurisdiction and s
     0.1,
     tolerance = 1e-8
   )
-  testthat::expect_equal(p$haloWidth_m, 20)
+  testthat::expect_equal(p$marginWidth_m, 20)
   testthat::expect_match(p$sources$streams$coverage, "unknown")
 })
 

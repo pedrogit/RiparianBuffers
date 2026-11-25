@@ -1,11 +1,11 @@
 # Exact means polygon/cell intersections in the grid CRS; full-cell area is the
-# denominator, even where studyArea occupies only part of a planning cell.
-exactTileFractions <- function(template, footprint) {
+# denominator, even where studyArea occupies only part of a grid cell.
+exactTileFractions <- function(template, lakeBufferArea) {
   # Allocate one coverage value per template cell; zero is the natural value
-  # for cells with no footprint intersection.
+  # for cells that do not meet the lake-and-buffer area.
   answer <- numeric(terra::ncell(template))
-  # Avoid invoking the extractor when this tile has no polygonal numerator.
-  if (is.null(footprint) || !nrow(footprint)) {
+  # Avoid invoking the extractor when this tile has no lake-and-buffer area.
+  if (is.null(lakeBufferArea) || !nrow(lakeBufferArea)) {
     return(answer)
   }
   # Fail explicitly rather than substituting an approximate raster operation.
@@ -18,7 +18,7 @@ exactTileFractions <- function(template, footprint) {
   terra::values(grid) <- 1
   # Request native cell IDs to put extracted coverage back in raster order.
   hits <- exactextractr::exact_extract(
-    grid, sf::st_as_sf(footprint), include_cell = TRUE, progress = FALSE
+    grid, sf::st_as_sf(lakeBufferArea), include_cell = TRUE, progress = FALSE
   )
   hits <- do.call(rbind, hits)
   # No returned intersections means the initialized all-zero answer is complete.
@@ -52,23 +52,26 @@ exactTileFractions <- function(template, footprint) {
   pmin(1, pmax(0, answer))
 }
 
-#' Tiled exact combined lake-and-riparian coverage, with staged publication
+#' Tiled exact combined lake-and-riparian coverage
+#'
+#' The files are first built in a temporary folder and then copied to the output
+#' folder, so the output folder never holds a half-written result.
 #'
 #' Planar cell coverage requires exactextractr; sf provides vector export because
 #' terra 1.9.27 cannot append to an existing file with writeVector(insert=TRUE),
 #' while sf's GDAL append also supports empty layers. The vector is a single
 #' GeoPackage (`riparian_buffers.gpkg`, layer `riparian_buffers`), which has no
 #' practical size limit, unlike a Shapefile (2 GiB per component).
-#' Output geometry comprises disjoint tile cores; seams are processing artifacts.
+#' Output geometry is made of disjoint tile pieces; seams are processing artifacts.
 #'
 #' Tiles are independent, so with `workers > 1` they are computed in that many
 #' separate R processes (see `runJobs`) while this process writes the raster in
 #' row order. With `resume = TRUE` every finished tile is also saved under
 #' `scratchDir/riparian_progress`; after a failure or interruption, running again
 #' with the same inputs skips those tiles. The saved tiles are deleted when the
-#' final files are published. Resuming is off when the vector is exported, since
-#' footprints are not saved. A failing tile is reported by number, position and
-#' extent.
+#' final files are copied to the output folder. Resuming is off when the vector is
+#' exported, since the lake-and-buffer areas are not saved. A failing tile is
+#' reported by number, position and extent.
 fractionalCoverage <- function(
   studyArea,
   PlanningGrid,
@@ -146,7 +149,7 @@ fractionalCoverage <- function(
   # Every tile uses the same validated maximum width for whole-feature selection.
   maxWidth <- max(w)
   for (path in c(outputDir, scratchDir)) {
-    # Ensure output and staging locations are usable before any processing begins.
+    # Ensure the output and temporary folders are usable before any processing begins.
     if (length(path) != 1L || is.na(path) || !nzchar(path)) {
       stop("Output/scratch paths must be nonempty.")
     }
@@ -175,16 +178,16 @@ fractionalCoverage <- function(
       paste(existing[protected], collapse = ", ")
     )
   }
-  # Build complete files in scratch space, so the output directory is published atomically.
-  stage <- tempfile(pattern = "riparian_stage_", tmpdir = scratchDir)
-  if (!dir.create(stage)) {
-    stop("Cannot create staging directory: ", stage)
+  # Build complete files in scratch space, so the output directory is filled all at once.
+  tempFolder <- tempfile(pattern = "riparian_temp_", tmpdir = scratchDir)
+  if (!dir.create(tempFolder)) {
+    stop("Cannot create temporary directory: ", tempFolder)
   }
-  stagedRaster <- file.path(stage, rasterName)
-  stagedVector <- file.path(stage, vectorName)
+  tempRaster <- file.path(tempFolder, rasterName)
+  tempVector <- file.path(tempFolder, vectorName)
   completed <- FALSE
   opened <- FALSE
-  # Copy the planning grid geometry and give its single output layer a stable name.
+  # Copy the target reference raster geometry and give its single output layer a stable name.
   writer <- terra::rast(PlanningGrid)
   names(writer) <- "riparianFraction"
   on.exit(
@@ -194,13 +197,13 @@ fractionalCoverage <- function(
         try(terra::writeStop(writer), silent = TRUE)
       }
       if (completed) {
-        # Remove staging only after every final file has been successfully published.
-        unlink(stage, recursive = TRUE)
+        # Remove the temporary folder only after every final file has been copied.
+        unlink(tempFolder, recursive = TRUE)
       } else {
-        # Preserve failed staging output for diagnosis instead of silently deleting it.
+        # Keep the unfinished output for diagnosis instead of silently deleting it.
         warning(
           "Incomplete riparian export retained at: ",
-          stage,
+          tempFolder,
           call. = FALSE
         )
       }
@@ -209,7 +212,7 @@ fractionalCoverage <- function(
   )
   terra::writeStart(
     writer,
-    stagedRaster,
+    tempRaster,
     overwrite = FALSE,
     datatype = "FLT8S",
     gdal = c("COMPRESS=DEFLATE", "BIGTIFF=IF_SAFER")
@@ -250,21 +253,22 @@ fractionalCoverage <- function(
   )
   tileFunctions <- list(
     processTile,
-    buildPolicyFootprints,
+    buildLakeBufferArea,
     exactTileFractions,
-    clipToDestination,
+    clipToJurisdiction,
     selectIntersecting,
     intersectPolygons,
     unionPolygons,
     polygonOnly
   )
-  # Footprints are not saved, so a run that exports the vector cannot resume.
+  # The lake-and-buffer areas are not saved, so a run that exports the vector
+  # cannot resume.
   progressDir <- if (resume && !exportVector) {
     file.path(scratchDir, "riparian_progress")
   }
   if (resume && exportVector) {
     message(
-      "resume = TRUE is ignored because exportVector = TRUE: tile footprints are ",
+      "resume = TRUE is ignored because exportVector = TRUE: tile lake-and-buffer areas are ",
       "not saved, so a failed run restarts from the first tile."
     )
   }
@@ -284,7 +288,7 @@ fractionalCoverage <- function(
   }
   stripeIds <- unique(tiles$stripe)
   stripeValues <- list()
-  stripeFootprints <- list()
+  stripeAreas <- list()
   have <- logical(totalTiles)
   have[saved] <- TRUE
   nextStripe <- 1L
@@ -306,15 +310,15 @@ fractionalCoverage <- function(
         }
         stripe[, seq.int(inStripe$col[i], length.out = inStripe$ncols[i])] <-
           values
-        footprint <- stripeFootprints[[as.character(id)]]
-        if (!is.null(footprint)) {
-          footprint <- terra::unwrap(footprint)
-          footprint$tile_id <- as.integer(id)
-          # Append independent tile-core pieces; tile IDs retain their processing origin.
+        lakeBufferArea <- stripeAreas[[as.character(id)]]
+        if (!is.null(lakeBufferArea)) {
+          lakeBufferArea <- terra::unwrap(lakeBufferArea)
+          lakeBufferArea$tile_id <- as.integer(id)
+          # Append independent tile pieces; tile IDs retain their processing origin.
           # One geometry type for the whole layer, whatever each tile produces.
           sf::st_write(
-            sf::st_cast(sf::st_as_sf(footprint), "MULTIPOLYGON"),
-            stagedVector,
+            sf::st_cast(sf::st_as_sf(lakeBufferArea), "MULTIPOLYGON"),
+            tempVector,
             layer = vectorLayer,
             quiet = TRUE,
             append = vectorStarted
@@ -322,7 +326,7 @@ fractionalCoverage <- function(
           vectorStarted <<- TRUE
         }
         stripeValues[[as.character(id)]] <<- NULL
-        stripeFootprints[[as.character(id)]] <<- NULL
+        stripeAreas[[as.character(id)]] <<- NULL
       }
       terra::writeValues(
         writer,
@@ -341,7 +345,7 @@ fractionalCoverage <- function(
     run = processTile,
     ctx = ctx,
     helpers = c(
-      "buildPolicyFootprints", "exactTileFractions", "clipToDestination",
+      "buildLakeBufferArea", "exactTileFractions", "clipToJurisdiction",
       "selectIntersecting", "intersectPolygons", "unionPolygons",
       "polygonOnly"
     ),
@@ -352,8 +356,8 @@ fractionalCoverage <- function(
       id <- todo$id[i]
       key <- as.character(id)
       stripeValues[[key]] <<- res$values
-      if (!is.null(res$footprint)) {
-        stripeFootprints[[key]] <<- res$footprint
+      if (!is.null(res$lakeBufferArea)) {
+        stripeAreas[[key]] <<- res$lakeBufferArea
       }
       if (!is.null(progressDir)) {
         saveTileProgress(progressDir, id, res$values)
@@ -368,7 +372,7 @@ fractionalCoverage <- function(
   opened <- FALSE
   if (exportVector) {
     if (!vectorStarted) {
-      # Publish a valid empty layer when no tile produced a footprint.
+      # Write a valid empty layer when no tile produced a lake-and-buffer area.
       empty <- sf::st_sf(
         tile_id = integer(),
         geometry = sf::st_sfc(
@@ -376,41 +380,41 @@ fractionalCoverage <- function(
           crs = terra::crs(PlanningGrid)
         )[FALSE]
       )
-      sf::st_write(empty, stagedVector, layer = vectorLayer, quiet = TRUE)
+      sf::st_write(empty, tempVector, layer = vectorLayer, quiet = TRUE)
     }
     # Confirm that GDAL produced the file before publication.
-    if (!file.exists(stagedVector)) {
-      stop("Staged GeoPackage was not created.")
+    if (!file.exists(tempVector)) {
+      stop("Temporary GeoPackage was not created.")
     }
     # Querying the layer list via GDAL avoids reading a continental vector back.
-    info <- sf::st_layers(stagedVector)
+    info <- sf::st_layers(tempVector)
     if (!(vectorLayer %in% info$name)) {
-      stop("Staged GeoPackage is not readable.")
+      stop("Temporary GeoPackage is not readable.")
     }
   }
-  staged <- list.files(stage, full.names = TRUE)
-  # Map every staged raster/vector sidecar into the requested output directory.
-  destination <- file.path(outputDir, basename(staged))
-  if (any(file.exists(destination))) {
-    stop("Outputs appeared during processing; refusing publication overwrite.")
+  tempFiles <- list.files(tempFolder, full.names = TRUE)
+  # Map every temporary raster/vector file into the requested output directory.
+  outputFiles <- file.path(outputDir, basename(tempFiles))
+  if (any(file.exists(outputFiles))) {
+    stop("Outputs appeared during processing; refusing to overwrite them.")
   }
-  published <- character()
-  for (i in seq_along(staged)) {
-    # Copy without overwrite; remove already copied siblings if publication fails midway.
-    if (!file.copy(staged[i], destination[i], overwrite = FALSE)) {
-      unlink(published)
+  copied <- character()
+  for (i in seq_along(tempFiles)) {
+    # Copy without overwrite; remove already copied siblings if copying fails midway.
+    if (!file.copy(tempFiles[i], outputFiles[i], overwrite = FALSE)) {
+      unlink(copied)
       stop(
-        "Output publication failed; completed staged files retained at: ",
-        stage
+        "Copying to the output folder failed; the completed files are kept at: ",
+        tempFolder
       )
     }
-    published <- c(published, destination[i])
+    copied <- c(copied, outputFiles[i])
   }
   result <- tryCatch(
     terra::rast(file.path(outputDir, rasterName)),
     error = function(e) {
-      # Do not leave a published but unreadable raster if validation fails.
-      unlink(published)
+      # Do not leave a copied but unreadable raster if validation fails.
+      unlink(copied)
       stop(e)
     }
   )

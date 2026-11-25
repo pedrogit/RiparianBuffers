@@ -50,14 +50,14 @@ testthat::test_that("a failing tile is named, and a rerun resumes from saved til
   p <- sol_multi_fixture()
   scratch <- sol_dir("resume")
   reference <- suppressWarnings(suppressMessages(sol_run_with(p, tileCells = 1L, workers = 1L, resume = FALSE)))
-  # Break the footprint builder for one tile only.
+  # Break the lake-and-buffer builder for one tile only.
   env <- environment(fractionalCoverage)
   original <- get("exactTileFractions", env)
   calls <- 0L
-  assign("exactTileFractions", function(template, footprint) {
+  assign("exactTileFractions", function(template, lakeBufferArea) {
     calls <<- calls + 1L
     if (calls == 6L) stop("simulated failure")
-    original(template, footprint)
+    original(template, lakeBufferArea)
   }, env)
   failed <- tryCatch(
     suppressWarnings(suppressMessages(
@@ -73,7 +73,7 @@ testthat::test_that("a failing tile is named, and a rerun resumes from saved til
   # as it would be for a real failure that left the code unchanged.
   fingerprint <- readRDS(file.path(progress, "fingerprint.rds"))
   fingerprint$code <- codeSignature(list(
-    processTile, buildPolicyFootprints, exactTileFractions, clipToDestination,
+    processTile, buildLakeBufferArea, exactTileFractions, clipToJurisdiction,
     selectIntersecting, intersectPolygons, unionPolygons, polygonOnly
   ))
   saveRDS(fingerprint, file.path(progress, "fingerprint.rds"))

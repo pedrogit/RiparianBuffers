@@ -294,7 +294,7 @@ nonLakeLandArea <- function(studyArea, lakes, tileSize = 128000) {
 #'
 #' Returns the part of `study` (already dissolved) left after removing all
 #' jurisdictions and then all lakes that touch what remains. This is the "gap"
-#' used by the coverage check and the fringe assignment. The remainder is split
+#' used by the jurisdiction check and the fringe assignment. The remainder is split
 #' into connected pieces so that lake matching uses a spatial index instead of
 #' testing every lake against one multi-million-vertex polygon.
 uncoveredNonLakeLand <- function(Jurisdiction, study, lakes) {
@@ -401,7 +401,7 @@ assignFringeToNeighbour <- function(
   timing <- assignment$timing
   ps <- sf::st_geometry(sf::st_as_sf(pieces))
   code <- as.character(Jurisdiction$jurisdiction_code)[chosen]
-  # One multipart feature per receiving code keeps the footprint builder's
+  # One multipart feature per receiving code keeps the lake-and-buffer builder's
   # per-feature loop short even with very many fringe pieces. The pieces come
   # from one disaggregation, so they overlap nowhere and combining them without
   # a dissolve is exact and far cheaper than a union. Each new feature copies

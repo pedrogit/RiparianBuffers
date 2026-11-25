@@ -56,7 +56,7 @@ processPieceGroup <- function(ctx, job) {
     } else {
       worst <- Inf
     }
-    t0 <- tick("vertex vote (nearest vertices)", t0)
+    t0 <- tick("find nearest jurisdiction for each outline point", t0)
     if (worst <= reach / 2 || reach > 1e7) {
       break
     }
@@ -105,8 +105,9 @@ processPieceGroup <- function(ctx, job) {
 #' says whether it was decided by "vote" or by "border length", and `timing`
 #' gives time and memory per step. Pieces are grouped by 128 km tile and each
 #' group is compared with a small crop of the jurisdictions (never the whole
-#' layer). Each piece vertex votes for the jurisdiction owning the nearest
-#' jurisdiction vertex; the winner has the most votes. Where several
+#' layer). Each point on a piece's outline picks the jurisdiction owning the
+#' nearest jurisdiction outline point (its "vote"); the jurisdiction picked most
+#' often wins. Where several
 #' jurisdictions touch a piece, the one sharing the longest border is chosen.
 #' The groups are independent, so they are spread over `workers` R processes
 #' (see `runJobs`); the answer does not depend on the number of workers. In the
@@ -124,11 +125,11 @@ assignPiecesToJurisdiction <- function(
   workDir = tempdir()
 ) {
   # Returns, for every piece, the row of the neighbouring Jurisdiction feature,
-  # plus per-component timing and memory. A piece's neighbour is found by a vertex
-  # vote: edges are densified to vertexSpacing_m, each piece vertex votes for the
-  # jurisdiction owning its nearest jurisdiction vertex, and the jurisdiction with
-  # most votes wins (the one sharing the longest border, approximately). A piece
-  # whose vertices vote for several jurisdictions that all lie within
+  # plus per-component timing and memory. A piece's neighbour is found by
+  # counting nearest neighbours: edges are densified to vertexSpacing_m, each piece
+  # vertex picks the jurisdiction owning its nearest jurisdiction vertex, and the
+  # jurisdiction picked most often wins (the one sharing the longest border,
+  # approximately). A piece whose vertices pick several jurisdictions that all lie within
   # borderTolerance of it is decided exactly by shared border length. Pieces pair
   # with a small crop of the jurisdictions, never the whole layer.
   t0 <- proc.time()[["elapsed"]]

@@ -147,10 +147,10 @@ testthat::test_that("offline downloader writes validated source and reuses manif
       source$url
     )
     # A cached raw layer preserves feature endpoints outside studyArea.
-    halo <- sol_rect(-20, 120, -20, 120)
-    selected <- readRiparianHalo(
+    marginBox <- sol_rect(-20, 120, -20, 120)
+    selected <- readRiparianMargin(
       second,
-      halo,
+      marginBox,
       terra::crs(f$studyArea)
     )$vector
     testthat::expect_equal(
@@ -199,7 +199,7 @@ testthat::test_that("download failures and damaged cache report URL and local lo
   sol_error(validateShapefile(wrong, source), "missing CRS or ORD_STRA")
 })
 
-testthat::test_that("downloaded ZIP missing components is not published as complete cache", {
+testthat::test_that("downloaded ZIP missing components is not stored as a complete cache", {
   source <- riparianSource("streams")
   raw <- sol_dir("incomplete_zip")
   writeLines("fixture", file.path(raw, source$shape))

@@ -55,7 +55,7 @@ riparianBuffersInit <- function(sim) {
   if (!is.logical(export) || length(export) != 1L || is.na(export)) {
     stop("exportVectorBuffer must be one non-missing logical value.")
   }
-  # Zero disables fringe assignment and keeps the strict coverage check.
+  # Zero disables fringe assignment and keeps the strict check that all land has a jurisdiction.
   fringeMax <- params$fringeMaxArea_km2
   if (
     !is.numeric(fringeMax) ||
@@ -96,14 +96,14 @@ riparianBuffersInit <- function(sim) {
   input <- SpaDES.core::inputPath(sim)
   output <- file.path(SpaDES.core::outputPath(sim), "RiparianBuffers")
   scratchRoot <- paths[["scratchPath"]]
-  # Provide a module-specific staging location when no scratch path was configured.
+  # Provide a module-specific temporary location when no scratch path was configured.
   if (is.null(scratchRoot) || !length(scratchRoot) || !nzchar(scratchRoot)) {
     scratchRoot <- file.path(output, "scratch")
   }
   scratch <- file.path(scratchRoot, "RiparianBuffers")
   cache <- file.path(input, "RiparianBuffers")
   moduleDir <- file.path(SpaDES.core::modulePath(sim), "RiparianBuffers")
-  # Validate supplied inputs, obtain missing sources, and select whole halo features.
+  # Validate supplied inputs, obtain missing sources, and select whole streams and lakes within the margin.
   prepared <- prepareRiparianInputs(
     studyArea = sim$studyArea,
     PlanningGrid = sim$PlanningGrid,
@@ -119,10 +119,10 @@ riparianBuffersInit <- function(sim) {
     workDir = scratch,
     jurisdictionMargin_m = margin
   )
-  # Create destination directories only after the input contract has been checked.
+  # Create the output folders only after the inputs have been checked.
   dir.create(output, recursive = TRUE, showWarnings = FALSE)
   dir.create(scratch, recursive = TRUE, showWarnings = FALSE)
-  # Construct and union destination-policy footprints, then calculate tiled cell coverage.
+  # Build and merge the lake-and-buffer areas, then calculate the tiled cell coverage.
   result <- fractionalCoverage(
     studyArea = prepared$studyArea,
     PlanningGrid = prepared$PlanningGrid,
@@ -146,12 +146,12 @@ riparianBuffersInit <- function(sim) {
       method = "exactextractr projected polygon-cell coverage, grid-aligned sequential tiles",
       coverageTolerance = 1e-6,
       coverageConvention = paste(
-        "Union of mapped lake interiors and destination-policy buffers,",
-        "clipped to studyArea, divided by FULL planning-cell area including water; outside cells NA.",
+        "Union of mapped lake interiors and buffers using the width of the jurisdiction they land in,",
+        "clipped to studyArea, divided by FULL grid-cell area including water; outside cells NA.",
         "This is combined lake-and-riparian-buffer coverage, not riparian land alone or harvestable land."
       ),
       lakeInteriorsExcluded = FALSE,
-      borderRule = "Destination-jurisdiction policy; cross-border hydrology included through maximum-width halo",
+      borderRule = "Width of the jurisdiction the buffer lands in; streams and lakes across borders are included through a margin as wide as the widest buffer",
       streamConvention = "Stream centrelines do not define explicit river water-surface polygons",
       sourceCRS = prepared$sourceCRS,
       policyFallback = prepared$policyFallback,
@@ -160,8 +160,8 @@ riparianBuffersInit <- function(sim) {
       jurisdictionMargin_m = margin,
       geometryRepairs = prepared$repairs,
       sources = prepared$sources,
-      haloWidth_m = prepared$haloWidth_m,
-      haloExtent = prepared$haloExtent,
+      marginWidth_m = prepared$marginWidth_m,
+      marginExtent = prepared$marginExtent,
       policyAssumption = prepared$policySource,
       projectionConvention = "Areas and widths are planar in the study-area CRS; projection distortion is not corrected",
       tileCells = as.integer(tile),

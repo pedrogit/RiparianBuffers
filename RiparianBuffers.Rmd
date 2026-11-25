@@ -6,17 +6,17 @@ output: html_document
 # Purpose
 
 This module creates `sim$Riparian$riparianFraction`, an exact projected
-vector-intersection coverage raster on the supplied `PlanningGrid`. It is a
+vector-intersection coverage raster on the supplied target reference raster (`PlanningGrid`). It is a
 separate result from `sim$Riparian` and never changes the original module.
 
 # Meaning of the fraction
 
 > The output measures combined lake-and-riparian-buffer coverage, not riparian
 > land alone. Mapped lake water surfaces are included along with policy-width
-> buffers on surrounding land. A planning cell entirely inside a mapped lake
+> buffers on surrounding land. A grid cell entirely inside a mapped lake
 > and the study area has `riparianFraction = 1`. Lake water overlapped by stream
 > or lake buffers is counted once, not added repeatedly. The denominator is the
-> full planning-cell area, including water. Cells entirely outside the study
+> full grid-cell area, including water. Cells entirely outside the study
 > area are `NA`. These values are a hydrological influence/coverage signal, not
 > a classification of harvestable land.
 
@@ -34,16 +34,16 @@ mapped lake interior ───────┘
 
 # Policy and geometry
 
-Buffers use the receiving (destination) jurisdiction's width, including for a
+Buffers use the width of the jurisdiction they land in, including for a
 feature on the other side of a boundary, and are then clipped to that receiving
 jurisdiction. Lake interiors are independent of policy and jurisdiction
 coverage. `ORD_STRA >= 4` is a large stream and `Lake_area >= 1` km² is a large
 lake. The bundled six-province/default table is an analytical assumption, not
 legal advice. Unmatched jurisdictions are recorded as default-policy fallback.
 
-All widths and areas are planar in the projected metre CRS of `PlanningGrid`.
+All widths and areas are planar in the projected metre CRS of the target reference raster (`PlanningGrid`).
 “Exact” denotes polygon--cell intersection within floating-point tolerance,
-not a perfect curve, geodesic area, or a completeness claim about hydrology.
+not a perfect curve, geodesic area, or a completeness claim about the stream and lake data.
 
 Cell coverage is calculated with `exactextractr`, avoiding explicit GEOS
 intersections for every cell. Runtime packages are `SpaDES.core`, `terra`, `sf`,
@@ -52,7 +52,7 @@ coverage fraction (1 m² per 1000 m cell), recorded as `coverageTolerance`.
 
 # Inputs and outputs
 
-`studyArea` is required. `PlanningGrid` is a common, read-only input; absent a
+`studyArea` is required. The target reference raster (`PlanningGrid`) is a common, read-only input; absent a
 supplied/upstream grid, standalone preparation creates a 240 m fallback. The
 optional unsuffixed inputs are `Jurisdiction`, `riparianBufferPolicy`,
 `Hydrology_streams`, and `Hydrology_lakes`. Missing streams and lakes are
@@ -66,10 +66,10 @@ has no original-module `raster_m` field.
 # Vector export
 
 `exportVectorBuffer = TRUE` (default `FALSE`) writes the final unioned
-lake-and-buffer numerator as `riparian_buffers.gpkg` next to the GeoTIFF.
+lake-and-buffer area as `riparian_buffers.gpkg` next to the GeoTIFF.
 `FALSE` writes the identical raster but no vector file, and keeps `resume` available. The GeoPackage is a
 single file with one layer, `riparian_buffers`, and has no practical size limit
-(a Shapefile would stop at 2 GiB). Its short `tile_id` field marks tile-core
+(a Shapefile would stop at 2 GiB). Its short `tile_id` field marks the tile
 pieces. Tile seams can remain in the vector layer, are not ecological
 boundaries, and do not duplicate coverage.
 
@@ -88,7 +88,7 @@ sim <- SpaDES.core::spades(sim)
 fraction <- sim$Riparian$riparianFraction
 ```
 
-For a joint run, explicitly supply one shared `PlanningGrid` and select either
+For a joint run, explicitly supply one shared target reference raster (`PlanningGrid`) and select either
 `Riparian$riparianFraction` or `Riparian$riparianFraction` downstream.
 Landbase's existing load order and input target the original result; adopting
 the new result requires separate explicit integration work.
